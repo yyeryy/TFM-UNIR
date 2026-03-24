@@ -2,9 +2,6 @@
 # ESPECÍFICO PARA IA Y DVC (Añadir esto)
 # ==========================================
 
-# Ignorar las carpetas de datos (DVC se encarga de ellas)
-data/
-!data/*.dvc
 
 # Ignorar los pesos de los modelos (Suelen ser >100MB)
 models/*.pth
@@ -14,10 +11,6 @@ models/*.weights
 models/*.bin
 !models/*.dvc
 
-# Ignorar archivos locales de DVC (configuraciones de tu PC)
-.dvc/config.local
-.dvc/tmp/
-.dvc/cache/
 
 # Archivos de logs de entrenamiento y pesados
 *.log
