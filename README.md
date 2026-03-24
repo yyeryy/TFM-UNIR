@@ -62,7 +62,7 @@ dvc add data/mi_archivo_grande.zip
 
 2. Subir el ticket a GitHub:
 ```bash
-git add data/mi_archivo_grande.zip.dvc data/.gitignore
+git add data/mi_archivo_grande.zip.dvc .gitignore
 git commit -m "Actualizado dataset/modelo"
 git push
 ```
