@@ -2,3 +2,5 @@
     remote = myremote
 ['remote "myremote"']
     url = gdrive://1koWhDFlRurtd8MS5Eui_7ogYIWQvjG4l
+    gdrive_use_service_account = true
+    gdrive_service_account_json_file_path = ../credenciales_dvc.json
