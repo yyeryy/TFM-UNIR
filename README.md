@@ -1,15 +1,23 @@
 # TFM-UNIR
 
-Estructura de Carpetas Sugerida (IA)
 
-Plaintext
-├── data/               # Datasets (añadid esto al .gitignore para no subirlos)
-├── notebooks/          # Experimentos iniciales en Jupyter (.ipynb)
-├── src/                # Código fuente definitivo (.py)
-│   ├── preprocessing/  # Limpieza de datos
-│   ├── models/         # Definición de la arquitectura
-│   └── training/       # Scripts de entrenamiento
-├── models/             # Pesos guardados (.pth, .h5) -> Usad DVC o Git LFS
-├── tests/              # Pruebas para asegurar que el código funciona
-├── requirements.txt    # Librerías necesarias (pip install -r ...)
-└── README.md           # Documentación del proyecto
+Breve descripción del proyecto (1-2 frases). Ejemplo: *Implementación de un modelo de segmentación de imágenes médicas utilizando arquitecturas basadas en Transformers para la detección temprana de anomalías.*
+
+---
+
+## 📂 Estructura del Repositorio
+
+Hemos organizado el proyecto siguiendo un esquema modular para facilitar el trabajo en paralelo y la escalabilidad del código:
+
+```text
+.
+├── data/               # Datasets originales y procesados (ignorado por Git)
+├── notebooks/          # Experimentos iniciales, EDA y prototipado (.ipynb)
+├── src/                # Código fuente definitivo y modular (.py)
+│   ├── preprocessing/  # Limpieza, normalización y aumento de datos
+│   ├── models/         # Definición de arquitecturas (PyTorch/TF)
+│   └── training/       # Scripts de entrenamiento y validación
+├── models/             # Pesos de modelos entrenados (.pth, .h5, .onnx)
+├── tests/              # Pruebas para asegurar la integridad del pipeline
+├── requirements.txt    # Dependencias del proyecto
+└── README.md           # Documentación principal
