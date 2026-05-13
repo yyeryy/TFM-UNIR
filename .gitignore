@@ -1,18 +1,62 @@
-# ==========================================
-# ESPECÍFICO PARA IA Y DVC (Añadir esto)
-# ==========================================
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.venv
+venv/
+ENV/
 
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
 
-# Ignorar los pesos de los modelos (Suelen ser >100MB)
-models/*.pth
-models/*.h5
-models/*.onnx
-models/*.weights
-models/*.bin
-!models/*.dvc
+# --- IA / Machine Learning ---
+# No subir los pesos de los modelos (son muy pesados)
+*.h5
+*.pth
+*.pt
+*.onnx
+*.weights
+*.ckpt
 
+# No subir los datasets (deben descargarse o linkearse localmente)
+data/
+datasets/
+raw_data/
+processed_data/
+*.zip
+*.tar.gz
+*.csv
+*.npy
+*.npz
 
-# Archivos de logs de entrenamiento y pesados
-*.log
-lightning_logs/
+# --- Logs y Visualización ---
+logs/
 runs/
+.wandb/
+wandb/
+tensorboard/
+
+# --- OS & IDE ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
