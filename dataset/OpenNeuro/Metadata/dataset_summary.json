@@ -1,0 +1,33 @@
+{
+    "ruta_datos": "dataset/OpenNeuro/Raw",
+    "total_imagenes_encontradas": 92,
+    "imagenes_validas": 92,
+    "imagenes_con_error": 0,
+    "total_sujetos": 46,
+    "sujetos_por_grupo": [
+        {
+            "grupo": "control",
+            "num_sujetos": 25
+        },
+        {
+            "grupo": "parkinson",
+            "num_sujetos": 21
+        }
+    ],
+    "imagenes_por_grupo": [
+        {
+            "grupo": "control",
+            "num_imagenes": 50,
+            "num_sujetos": 25
+        },
+        {
+            "grupo": "parkinson",
+            "num_imagenes": 42,
+            "num_sujetos": 21
+        }
+    ],
+    "sesiones": [
+        "ses-1",
+        "ses-2"
+    ]
+}
