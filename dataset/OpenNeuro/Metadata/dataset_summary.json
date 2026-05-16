@@ -1,5 +1,5 @@
 {
-    "ruta_datos": "dataset/OpenNeuro/Raw",
+    "ruta_datos": "dataset/OpenNeuro/images",
     "total_imagenes_encontradas": 92,
     "imagenes_validas": 92,
     "imagenes_con_error": 0,

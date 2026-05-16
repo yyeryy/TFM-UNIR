@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 
-RUTA_DATOS = "dataset/OpenNeuro/Raw"
+RUTA_DATOS = "dataset/OpenNeuro/images"
 RUTA_SALIDA = "dataset/OpenNeuro/metadata"
 
 
@@ -41,15 +41,16 @@ def obtener_grupo(sujeto: str):
 
 
 def buscar_imagenes_t1(ruta_base: Path, usar_derivados: bool = True):
-    if usar_derivados:
-        patrones = [
-            "derivatives/sub-*/ses-*/anat/*T1wbrain.nii.gz",
-            "derivatives/sub-*/ses-*/anat/*T1w*.nii.gz",
-        ]
-    else:
-        patrones = [
-            "sub-*/ses-*/anat/*_T1w.nii.gz",
-        ]
+    patrones = [
+        "sub-*/ses-*/anat/*T1wbrain.nii.gz",
+        "sub-*/ses-*/anat/*T1w*.nii.gz",
+
+        "derivatives/sub-*/ses-*/anat/*T1wbrain.nii.gz",
+        "derivatives/sub-*/ses-*/anat/*T1w*.nii.gz",
+
+        "**/*T1wbrain.nii.gz",
+        "**/*T1w*.nii.gz",
+    ]
 
     imagenes = []
     for patron in patrones:
