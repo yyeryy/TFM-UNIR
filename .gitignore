@@ -37,6 +37,7 @@ ENV/
 *.ckpt
 
 data/
+metadata/
 
 # --- Dataset original descargado con DataLad ---
 dataset/OpenNeuro/Raw/
