@@ -36,8 +36,10 @@ ENV/
 *.weights
 *.ckpt
 
-data/
-metadata/
+data/*
+
+# Excepción para que NO ignore la carpeta indexs y su contenido
+!data/indexs/
 
 # --- Dataset original descargado con DataLad ---
 dataset/OpenNeuro/Raw/
