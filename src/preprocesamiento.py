@@ -57,8 +57,13 @@ def procesar_dataset_2d():
             procesados_ok += 1
             continue
             
-        carpetas_dicom = [x[0] for x in os.walk(sujeto_path) if any(f.endswith('.dcm') for f in x[2])]
-        
+        carpetas_dicom = []
+        for raiz, directorios, archivos in os.walk(sujeto_path):
+            archivos_validos = [f for f in archivos if f.lower().endswith('.dcm') or f.lower().endswith('.ima')]
+            
+            if len(archivos_validos) > 30:
+                carpetas_dicom.append(raiz)      
+
         if not carpetas_dicom:
             print(f"Procesado {actual}/{total_sujetos} - Sujeto {id_sujeto}: No se encontraron archivos DICOM.")
             errores += 1

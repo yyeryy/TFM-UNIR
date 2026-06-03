@@ -86,7 +86,6 @@ def main():
     # 4. Verificacion de XML
     print("\n[4/5] Comprobando archivos XML de metadatos...")
     missing_xmls = 0
-    
     for subject_id in all_subjects_raw:
         if not glob.glob(os.path.join(dir_metadata, f"*{subject_id}*.xml")):
             missing_xmls += 1
@@ -96,20 +95,20 @@ def main():
     else:
         print(f"[WARNING] Faltan metadatos XML para {missing_xmls} sujetos. (Proceso no bloqueante)")
 
-    # 5. Verificacion del Indice Maestro
+    # 5. Verificacion del Indice Maestro con formato original
     print("\n[5/5] Comprobando el Indice Maestro (data_index.csv)...")
     if not os.path.exists(archivo_maestro):
         print("[ERROR] El archivo data_index.csv no existe en la raiz del proyecto.")
-        print("[INFO] Accion requerida: Ejecutar 'python scripts/generar_indice.py'")
+        print("[INFO] Accion requerida: Ejecutar 'python scripts/unificar_indice.py'")
         status_ok = False
     else:
         try:
             df_maestro = pd.read_csv(archivo_maestro)
-            if 'subject_id' not in df_maestro.columns:
-                print("[ERROR] data_index.csv no tiene la columna 'subject_id'. Formato invalido.")
+            if 'Subject' not in df_maestro.columns:
+                print("[ERROR] data_index.csv no tiene la columna original 'Subject'.")
                 status_ok = False
             else:
-                subjects_maestro = set(df_maestro['subject_id'].astype(str).str.strip())
+                subjects_maestro = set(df_maestro['Subject'].astype(str).str.strip())
                 
                 faltan_en_maestro = all_subjects_raw - subjects_maestro
                 sobran_en_maestro = subjects_maestro - all_subjects_raw
@@ -120,8 +119,8 @@ def main():
                     if len(faltan_en_maestro) > 0:
                         print(f"[ERROR] Faltan {len(faltan_en_maestro)} sujetos en data_index.csv.")
                     if len(sobran_en_maestro) > 0:
-                        print(f"[ERROR] Hay {len(sobran_en_maestro)} sujetos fantasma en data_index.csv que no estan en los datos crudos.")
-                    print("[INFO] Accion requerida: Reconstruir el indice ejecutando 'python scripts/generar_indice.py'")
+                        print(f"[ERROR] Hay {len(sobran_en_maestro)} sujetos fantasma en data_index.csv.")
+                    print("[INFO] Accion requerida: Reconstruir el indice ejecutando 'python scripts/unificar_indice.py'")
                     status_ok = False
         except Exception as e:
             print(f"[ERROR] Fallo al leer data_index.csv: {e}")
