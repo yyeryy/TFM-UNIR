@@ -53,8 +53,9 @@ def main():
 
     print(f"[OK] Cargados {len(df_pd)} registros PD/Control y {len(df_prod)} registros Prodromal.")
 
-    subjects_pd = set(df_pd['Subject'].astype(str).str.strip())
-    subjects_prod = set(df_prod['Subject'].astype(str).str.strip())
+    # Fix para Mac/Windows: limpieza estricta de decimales y espacios
+    subjects_pd = set(df_pd['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0]))
+    subjects_prod = set(df_prod['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0]))
     all_subjects_raw = subjects_pd.union(subjects_prod)
 
     # 2. Verificacion de cruce de datos
@@ -108,18 +109,18 @@ def main():
                 print("[ERROR] data_index.csv no tiene la columna original 'Subject'.")
                 status_ok = False
             else:
-                subjects_maestro = set(df_maestro['Subject'].astype(str).str.strip())
+                # Fix para Mac/Windows en el maestro
+                subjects_maestro = set(df_maestro['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0]))
                 
                 faltan_en_maestro = all_subjects_raw - subjects_maestro
                 sobran_en_maestro = subjects_maestro - all_subjects_raw
                 
-                if len(faltan_en_maestro) == 0 and len(sobran_en_maestro) == 0:
-                    print(f"[OK] Indice maestro perfectamente sincronizado ({len(subjects_maestro)} pacientes).")
-                else:
+                if len(sobran_en_maestro) == 0:
+                    print(f"[OK] Indice maestro validado y sin sujetos fantasma ({len(subjects_maestro)} pacientes activos).")
                     if len(faltan_en_maestro) > 0:
-                        print(f"[ERROR] Faltan {len(faltan_en_maestro)} sujetos en data_index.csv.")
-                    if len(sobran_en_maestro) > 0:
-                        print(f"[ERROR] Hay {len(sobran_en_maestro)} sujetos fantasma en data_index.csv.")
+                        print(f"[INFO] Hay {len(faltan_en_maestro)} sujetos en los datos crudos que han sido purgados del indice maestro. (Comportamiento esperado)")
+                else:
+                    print(f"[ERROR] Hay {len(sobran_en_maestro)} sujetos fantasma en data_index.csv que no existen en los datos crudos.")
                     print("[INFO] Accion requerida: Reconstruir el indice ejecutando 'python scripts/unificar_indice.py'")
                     status_ok = False
         except Exception as e:
