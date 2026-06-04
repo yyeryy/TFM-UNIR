@@ -1,3 +1,5 @@
+import os
+import platform
 import torch
 import numpy as np
 import pandas as pd
@@ -35,10 +37,6 @@ class ParkinsonDataset(Dataset):
 
 
 def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 'PD'], batch_size=32):
-    """
-    clases_permitidas: Lista de strings con los grupos a cargar. 
-    Ej: ['Control', 'PD'] para Fase 1, o ['Control', 'PD', 'Prodromal'] para Fase 2.
-    """
     ruta_imagenes = Path(ruta_imagenes)
     
     # 1. Cargar y limpiar
@@ -75,14 +73,21 @@ def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 
     df_val = df_master[df_master['Subject'].isin(val_subj['Subject'])]
     df_test = df_master[df_master['Subject'].isin(test_subj['Subject'])]
     
+    # --- FIX MULTIPLATAFORMA PARA DATALOADERS ---
+    # En Mac (Darwin) forzamos num_workers=0 para evitar bloqueos del sistema operativo.
+    # En Windows/Linux usamos 2 para acelerar la carga de imágenes.
+    sistema = platform.system()
+    trabajadores = 0 if sistema == 'Darwin' else 2
+    print(f"[INFO] SO Detectado: {sistema}. DataLoader configurado con num_workers={trabajadores}.")
+
     # 6. Crear Datasets y Loaders
     train_dataset = ParkinsonDataset(df_train, ruta_imagenes)
     val_dataset = ParkinsonDataset(df_val, ruta_imagenes)
     test_dataset = ParkinsonDataset(df_test, ruta_imagenes)
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=trabajadores, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=True)
     
     conteos_clase = df_train['Etiqueta'].value_counts().sort_index()
     total_muestras = len(df_train)
@@ -91,15 +96,41 @@ def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 
     
     return train_loader, val_loader, test_loader, pesos_clase, mapeo_etiquetas
 
+
 if __name__ == "__main__":
+    print("\n" + "="*50)
+    print(" TEST MULTIPLATAFORMA DEL DATALOADER")
+    print("="*50)
     try:
-        ruta_csv = "data_index.csv"
-        ruta_img = "data/PPMI_Procesado_2D"
+        # Detectar la ruta raíz del proyecto independientemente de desde dónde se ejecute
+        script_dir = Path(__file__).resolve().parent
+        project_root = script_dir.parent
         
-        # Prueba Fase 1 (Solo Control y PD)
+        ruta_csv = project_root / "data_index.csv"
+        ruta_img = project_root / "data" / "PPMI_Procesado_2D"
+        
+        # Hardware Check
+        if torch.cuda.is_available():
+            disp = "NVIDIA GPU (CUDA)"
+        elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            disp = "Apple Silicon (MPS)"
+        else:
+            disp = "CPU"
+        print(f"[INFO] Procesador gráfico detectado: {disp}\n")
+
+        # Probar la creación de los dataloaders
         t_loader, v_loader, test_loader, pesos, mapeo = preparar_dataloaders(
             ruta_csv, ruta_img, clases_permitidas=['Control', 'PD'], batch_size=32
         )
-        print(f"[OK] Dataloaders creados. Mapeo: {mapeo}. Pesos: {pesos.tolist()}")
+        print(f"\n[OK] Dataloaders creados con éxito.")
+        print(f"     Mapeo de clases: {mapeo}")
+        print(f"     Pesos de balanceo: {pesos.tolist()}")
+        
+        # Prueba de fuego: Extraer un batch de datos para comprobar que no explota
+        batch_imagenes, batch_etiquetas = next(iter(t_loader))
+        print(f"\n[OK] Extracción de lote de prueba superada.")
+        print(f"     Tensor de Imágenes: {batch_imagenes.shape} (Lote, Canales, Alto, Ancho)")
+        print(f"     Tensor de Etiquetas: {batch_etiquetas.shape}")
+        
     except Exception as e:
-        print(f"[ERROR]: {e}")
+        print(f"[ERROR FATAL]: {e}")
