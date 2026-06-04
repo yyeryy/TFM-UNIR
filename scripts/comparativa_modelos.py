@@ -1,5 +1,9 @@
 import sys
+import os
 from pathlib import Path
+
+# Activar el fallback para Mac: Si MPS no soporta una operacion, que use la CPU sin romper el script
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 ruta_raiz = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ruta_raiz))
@@ -14,6 +18,20 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 from src.dataset import preparar_dataloaders
+
+def obtener_dispositivo():
+    """Detecta de forma segura el mejor hardware disponible"""
+    if torch.cuda.is_available():
+        dispositivo = torch.device("cuda:0")
+        nombre_gpu = torch.cuda.get_device_name(0)
+        print(f"[INFO] Hardware detectado: NVIDIA GPU ({nombre_gpu}) - Usando CUDA")
+    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        dispositivo = torch.device("mps")
+        print("[INFO] Hardware detectado: Apple Silicon (M1/M2/M3) - Usando MPS")
+    else:
+        dispositivo = torch.device("cpu")
+        print("[WARNING] No se detecto GPU compatible. Usando CPU (Sera muy lento)")
+    return dispositivo
 
 def configurar_modelo(tipo_modelo='resnet18', num_clases=2):
     """Configura ResNet18 o ResNet50 con Transfer Learning"""
@@ -96,14 +114,11 @@ def test_rapido(modelo, nombre, train_loader, val_loader, pesos_clase, device, n
             # Calcular métricas de la época
             epoch_loss = running_loss / len(todas_labels)
             
-            # Al ser multiclase/binario, usamos 'macro' para dar igual peso a PD y Control, 
-            # o 'binary' si asumimos que PD es la clase 1 (positiva). Usaremos 'binary' por defecto
-            # asumiendo que tu mapeo hace Control=0 y PD=1. Si no, cambiar a 'macro'.
             epoch_prec = precision_score(todas_labels, todas_preds, average='binary', zero_division=0)
             epoch_rec = recall_score(todas_labels, todas_preds, average='binary', zero_division=0)
             epoch_f1 = f1_score(todas_labels, todas_preds, average='binary', zero_division=0)
             
-            # Accuracy manual (coincidencias / total)
+            # Accuracy manual para evitar incompatibilidad de .double() en Mac MPS
             epoch_acc = sum([1 for p, l in zip(todas_preds, todas_labels) if p == l]) / len(todas_labels)
 
             metricas[f'{fase.capitalize()} Loss'] = round(epoch_loss, 4)
@@ -127,9 +142,15 @@ def test_rapido(modelo, nombre, train_loader, val_loader, pesos_clase, device, n
     
     return df_resultados, tiempo_total
 
-def generar_graficos(df_r18, df_r50):
-    """Genera un panel de 2x2 con Accuracy, Loss, F1-Score y Recall"""
+def generar_graficos(df_r18, df_r50, dir_raiz):
+    """Genera un panel de 2x2 y lo guarda en la carpeta /graficas"""
     print("\n[INFO] Generando gráficos comparativos avanzados...")
+    
+    # 1. Crear carpeta graficas/ si no existe
+    dir_graficas = Path(dir_raiz) / 'graficas'
+    dir_graficas.mkdir(parents=True, exist_ok=True)
+    ruta_guardado = dir_graficas / 'comparativa_avanzada_modelos.png'
+
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, axs = plt.subplots(2, 2, figsize=(16, 10))
     
@@ -169,12 +190,11 @@ def generar_graficos(df_r18, df_r50):
 
     plt.suptitle('Evaluación de Arquitecturas: ResNet-18 vs ResNet-50 (PPMI Dataset)', fontsize=16, y=1.02)
     plt.tight_layout()
-    plt.savefig('comparativa_avanzada_modelos.png', dpi=300, bbox_inches='tight')
-    print("[OK] Gráfico guardado con éxito como 'comparativa_avanzada_modelos.png'")
+    plt.savefig(ruta_guardado, dpi=300, bbox_inches='tight')
+    print(f"[OK] Gráfico guardado con éxito en:\n     -> {ruta_guardado}")
 
 if __name__ == "__main__":
-    device = torch.device("cuda:0" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-    print(f"[INFO] Dispositivo de cálculo: {device}")
+    device = obtener_dispositivo()
     
     ruta_csv = "data_index.csv"
     ruta_img = "data/PPMI_Procesado_2D"
@@ -194,8 +214,8 @@ if __name__ == "__main__":
     modelo_r50 = configurar_modelo('resnet50', num_clases=2)
     df_r50, t_r50 = test_rapido(modelo_r50, "ResNet-50", train_loader, val_loader, pesos, device, num_epochs=EPOCHS_PRUEBA)
     
-    # 3. Generar la imagen para el TFM
-    generar_graficos(df_r18, df_r50)
+    # 3. Generar la imagen para el TFM en la carpeta de gráficas
+    generar_graficos(df_r18, df_r50, ruta_raiz)
     
     # --- RESUMEN FINAL ---
     print("\n" + "="*60)
