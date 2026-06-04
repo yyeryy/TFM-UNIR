@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+ruta_raiz = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ruta_raiz))
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,8 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_score, recall_score, f1_score
 
-# Importar tu Dataloader dinámico
-from dataset import preparar_dataloaders 
+from src.dataset import preparar_dataloaders
 
 def configurar_modelo(tipo_modelo='resnet18', num_clases=2):
     """Configura ResNet18 o ResNet50 con Transfer Learning"""
