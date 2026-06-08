@@ -30,7 +30,7 @@ ENV/
 
 # --- Modelos entrenados ---
 *.h5
-*.pth
+notebooks/models/*.pth
 *.pt
 *.onnx
 *.weights
