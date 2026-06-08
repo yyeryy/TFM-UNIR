@@ -74,20 +74,24 @@ def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 
     df_test = df_master[df_master['Subject'].isin(test_subj['Subject'])]
     
     # --- FIX MULTIPLATAFORMA PARA DATALOADERS ---
-    # En Mac (Darwin) forzamos num_workers=0 para evitar bloqueos del sistema operativo.
-    # En Windows/Linux usamos 2 para acelerar la carga de imágenes.
+    # En Mac (Darwin) forzamos num_workers=0 y desactivamos pin_memory para evitar warnings con MPS.
+    # En Windows/Linux mantenemos pin_memory=True para acelerar transferencias a CUDA.
     sistema = platform.system()
     trabajadores = 0 if sistema == 'Darwin' else 2
-    print(f"[INFO] SO Detectado: {sistema}. DataLoader configurado con num_workers={trabajadores}.")
+    usar_pin_memory = False if sistema == 'Darwin' else True
+    print(
+        f"[INFO] SO Detectado: {sistema}. "
+        f"DataLoader configurado con num_workers={trabajadores}, pin_memory={usar_pin_memory}."
+    )
 
     # 6. Crear Datasets y Loaders
     train_dataset = ParkinsonDataset(df_train, ruta_imagenes)
     val_dataset = ParkinsonDataset(df_val, ruta_imagenes)
     test_dataset = ParkinsonDataset(df_test, ruta_imagenes)
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=trabajadores, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=trabajadores, pin_memory=usar_pin_memory)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=usar_pin_memory)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=usar_pin_memory)
     
     conteos_clase = df_train['Etiqueta'].value_counts().sort_index()
     total_muestras = len(df_train)
