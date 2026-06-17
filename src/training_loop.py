@@ -38,7 +38,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Entrenamiento controlado ResNet para PPMI")
 
     # MODIFICACIÓN CRÍTICA: Actualizamos las rutas por defecto a la nueva base de datos MNI152
-    parser.add_argument("--csv", type=str, default="data/data_index.csv")
+    parser.add_argument("--csv", type=str, default="data_index.csv")
     parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas")
     parser.add_argument("--output-dir", type=str, default="models")
     parser.add_argument("--excel", type=str, default="resultados/experimentos_entrenamiento.xlsx")
