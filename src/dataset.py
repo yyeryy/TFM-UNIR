@@ -6,12 +6,26 @@ import pandas as pd
 from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
+from torchvision import transforms
+from torchvision.models import ResNet50_Weights
 
 class ParkinsonDataset(Dataset):
     def __init__(self, df_imagenes, ruta_imagenes, transformaciones=None):
         self.df = df_imagenes.reset_index(drop=True)
         self.ruta_imagenes = Path(ruta_imagenes)
-        self.transformaciones = transformaciones
+        
+        if transformaciones is None:
+            transform_oficial = ResNet50_Weights.DEFAULT.transforms()
+
+            # 2. Le extraemos sus atributos nativos de media y desviación estándar
+            mean_oficial = transform_oficial.mean  # Extrae automáticamente [0.485, 0.456, 0.406]
+            std_oficial = transform_oficial.std
+            
+            self.transformaciones = transforms.Compose([
+                transforms.Normalize(mean=mean_oficial, std=std_oficial)
+            ])
+        else:
+            self.transformaciones = transformaciones
 
     def __len__(self):
         return len(self.df)
@@ -23,10 +37,8 @@ class ParkinsonDataset(Dataset):
         ruta_completa = self.ruta_imagenes / nombre_archivo
         imagen_2d = np.load(ruta_completa)
         
-        # Convertir a tensor
         tensor_imagen = torch.from_numpy(imagen_2d).float()
         
-        # ResNet50 espera 3 canales (RGB). Repetimos el canal en escala de grises.
         tensor_imagen = tensor_imagen.unsqueeze(0)
         tensor_imagen = tensor_imagen.repeat(3, 1, 1)
         
@@ -74,10 +86,8 @@ def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 
     df_test = df_master[df_master['Subject'].isin(test_subj['Subject'])]
     
     # --- FIX MULTIPLATAFORMA PARA DATALOADERS ---
-    # En Mac (Darwin) forzamos num_workers=0 y desactivamos pin_memory para evitar warnings con MPS.
-    # En Windows/Linux mantenemos pin_memory=True para acelerar transferencias a CUDA.
     sistema = platform.system()
-    trabajadores = 0 if sistema == 'Darwin' else 2
+    trabajadores = 0 if sistema == 'Darwin' else 4
     usar_pin_memory = False if sistema == 'Darwin' else True
     print(
         f"[INFO] SO Detectado: {sistema}. "
@@ -95,7 +105,6 @@ def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 
     
     conteos_clase = df_train['Etiqueta'].value_counts().sort_index()
     total_muestras = len(df_train)
-    # Fórmula estándar de balanceo: Total / (Num_Clases * Conteo_Clase)
     pesos_clase = torch.tensor([total_muestras / (len(clases_permitidas) * c) for c in conteos_clase]).float()
     
     return train_loader, val_loader, test_loader, pesos_clase, mapeo_etiquetas
@@ -106,14 +115,15 @@ if __name__ == "__main__":
     print(" TEST MULTIPLATAFORMA DEL DATALOADER")
     print("="*50)
     try:
-        # Detectar la ruta raíz del proyecto independientemente de desde dónde se ejecute
         script_dir = Path(__file__).resolve().parent
         project_root = script_dir.parent
         
-        ruta_csv = project_root / "data_index.csv"
-        ruta_img = project_root / "data" / "PPMI_Procesado_2D"
+        # MODIFICACIÓN: Apuntamos al csv maestro final
+        ruta_csv = project_root / "data_index.csv" 
         
-        # Hardware Check
+        # MODIFICACIÓN CRÍTICA: Apuntar a la nueva carpeta de imágenes limpias del Atlas
+        ruta_img = project_root / "data" / "PPMI_Procesado_2D_Atlas"
+        
         if torch.cuda.is_available():
             disp = "NVIDIA GPU (CUDA)"
         elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
@@ -122,7 +132,6 @@ if __name__ == "__main__":
             disp = "CPU"
         print(f"[INFO] Procesador gráfico detectado: {disp}\n")
 
-        # Probar la creación de los dataloaders
         t_loader, v_loader, test_loader, pesos, mapeo = preparar_dataloaders(
             ruta_csv, ruta_img, clases_permitidas=['Control', 'PD'], batch_size=32
         )
@@ -130,7 +139,6 @@ if __name__ == "__main__":
         print(f"     Mapeo de clases: {mapeo}")
         print(f"     Pesos de balanceo: {pesos.tolist()}")
         
-        # Prueba de fuego: Extraer un batch de datos para comprobar que no explota
         batch_imagenes, batch_etiquetas = next(iter(t_loader))
         print(f"\n[OK] Extracción de lote de prueba superada.")
         print(f"     Tensor de Imágenes: {batch_imagenes.shape} (Lote, Canales, Alto, Ancho)")

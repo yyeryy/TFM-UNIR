@@ -29,10 +29,7 @@ def get_device():
         print("[WARNING] No se detecto GPU compatible. Usando CPU (Sera muy lento)")
     return dispositivo
 
-def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="data/PPMI_Procesado_2D", device=None):
-    """
-    Carga un checkpoint específico y lo evalúa de forma aislada en el conjunto de Test.
-    """
+def evaluar_modelo_test(checkpoint_path, csv_path="data/tabular/data_index.csv", images_dir="data/PPMI_Procesado_2D_Atlas", device=None):
     if device is None:
         device = get_device()
     
@@ -94,8 +91,9 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluación manual de modelos en el conjunto de Test")
     parser.add_argument("--checkpoint", type=str, required=True, help="Ruta al archivo .pth que quieres evaluar")
-    parser.add_argument("--csv", type=str, default="data_index.csv", help="Ruta al archivo de datos CSV")
-    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D", help="Ruta a las imagenes procesadas")
+    # MODIFICACIÓN CRÍTICA: Apuntamos por defecto a las rutas nuevas
+    parser.add_argument("--csv", type=str, default="data/tabular/data_index.csv", help="Ruta al archivo de datos CSV")
+    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas", help="Ruta a las imagenes procesadas")
     args = parser.parse_args()
     
     metrics, _ = evaluar_modelo_test(

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torchvision import models
+from torchvision.models import ResNet50_Weights
 
 # Librerías de XAI
 from pytorch_grad_cam import GradCAM
@@ -25,8 +26,11 @@ from src.dataset import preparar_dataloaders
 def parse_args():
     parser = argparse.ArgumentParser(description="Generador de Mapas de Calor (Grad-CAM) para TFM")
     parser.add_argument("--checkpoint", type=str, required=True, help="Ruta al archivo .pth del modelo entrenado")
+    
+    # MODIFICACIÓN: Apuntamos por defecto a las rutas nuevas y limpias
     parser.add_argument("--csv", type=str, default="data_index.csv")
-    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D")
+    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas")
+    
     parser.add_argument("--output-dir", type=str, default="graficas")
     parser.add_argument("--num-images", type=int, default=4, help="Numero de imagenes a analizar y graficar")
     return parser.parse_args()
@@ -39,7 +43,6 @@ def get_device():
     return torch.device("cpu")
 
 def reconstruir_modelo(checkpoint, device):
-    """Reconstruye la arquitectura dinámicamente leyendo los metadatos del .pth"""
     args_entrenamiento = checkpoint.get("args", {})
     model_name = checkpoint.get("model_name", args_entrenamiento.get("model", "resnet50"))
     clases_map = checkpoint.get("class_map", {"Control": 0, "PD": 1})
@@ -57,84 +60,92 @@ def reconstruir_modelo(checkpoint, device):
     num_features = model.fc.in_features
     model.fc = nn.Linear(num_features, num_classes)
     
-    # Inyectar pesos y poner en modo evaluación (Crítico para XAI)
     model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
     model.eval()
     
     return model, clases_map, args_entrenamiento
 
+def desnormalizar_imagen(tensor):
+    """
+    Revierte la normalización de ImageNet para que la imagen original
+    se pueda visualizar correctamente (sin colores/grises distorsionados).
+    """
+    pesos_resnet = ResNet50_Weights.DEFAULT
+    mean = torch.tensor(pesos_resnet.meta["mean"]).view(3, 1, 1)
+    std = torch.tensor(pesos_resnet.meta["std"]).view(3, 1, 1)
+    
+    tensor_desnorm = tensor.cpu() * std + mean
+    return tensor_desnorm
+
 def main():
     args = parse_args()
     device = get_device()
     print(f"[INFO] Dispositivo detectado: {device}")
 
-    # 1. Cargar el Checkpoint
-    ruta_pth = PROJECT_ROOT / args.checkpoint
+    ruta_pth = Path(args.checkpoint)
     if not ruta_pth.exists():
         raise FileNotFoundError(f"No se encontro el checkpoint en: {ruta_pth}")
     
-    checkpoint = torch.load(ruta_pth, map_location=device)
+    checkpoint = torch.load(ruta_pth, map_location=device, weights_only=False)
     modelo, class_map, args_train = reconstruir_modelo(checkpoint, device)
     
-    # Invertir el diccionario para mapear de numero a nombre de clase
     idx_to_class = {v: k for k, v in class_map.items()}
     clases_permitidas = list(class_map.keys())
 
-    # 2. Cargar Dataloader (Solo necesitamos Test)
     print(f"[INFO] Cargando datos de Test...")
     _, _, test_loader, _, _ = preparar_dataloaders(
         ruta_csv=PROJECT_ROOT / args.csv,
         ruta_imagenes=PROJECT_ROOT / args.images,
         clases_permitidas=clases_permitidas,
-        batch_size=args.num_images, # Cargamos justo las imagenes que queremos mostrar
+        batch_size=args.num_images, 
     )
 
-    # Extraer un lote
     imagenes, etiquetas = next(iter(test_loader))
     imagenes = imagenes.to(device)
     etiquetas = etiquetas.to(device)
 
-    # 3. Configurar Grad-CAM
-    # En ResNet, la última capa convolucional útil es la layer4
+    # 3. Configurar Grad-CAM: Resnet50 usa 'layer4'
     target_layers = [modelo.layer4[-1]]
     cam = GradCAM(model=modelo, target_layers=target_layers)
 
-    # 4. Generar predicciones y mapas
     outputs = modelo(imagenes)
     predicciones = torch.argmax(outputs, dim=1)
 
     fig, axes = plt.subplots(args.num_images, 2, figsize=(10, 4 * args.num_images))
     if args.num_images == 1:
-        axes = [axes] # Asegurar que sea iterable si solo pedimos 1 imagen
+        axes = [axes] 
 
     print(f"[INFO] Generando mapas Grad-CAM...")
     
     for i in range(args.num_images):
-        tensor_img = imagenes[i:i+1] # Mantener dimension de batch [1, C, H, W]
+        tensor_img = imagenes[i:i+1] 
         etiqueta_real = etiquetas[i].item()
         prediccion_red = predicciones[i].item()
         
         nombre_real = idx_to_class[etiqueta_real]
         nombre_pred = idx_to_class[prediccion_red]
         
-        # Le pedimos a Grad-CAM que explique por qué predijo lo que predijo
+        # Objetivo de la explicabilidad
         target = [ClassifierOutputTarget(prediccion_red)]
         
-        # Generar máscara térmica [H, W]
+        # Generar máscara de atención
         grayscale_cam = cam(input_tensor=tensor_img, targets=target)[0, :]
         
-        # Procesar imagen original para visualización
-        img_original = tensor_img[0].cpu().numpy().transpose(1, 2, 0) # [H, W, 3]
+        # MODIFICACIÓN CRÍTICA: Desnormalizamos la imagen para poder pintarla bien
+        img_desnorm = desnormalizar_imagen(tensor_img[0])
         
-        # Normalizar min-max estrictamente entre 0 y 1 para que show_cam_on_image no falle
-        img_norm = (img_original - img_original.min()) / (img_original.max() - img_original.min() + 1e-8)
+        # La pasamos al formato HxWxC que requiere OpenCV/Matplotlib
+        img_visual = img_desnorm.numpy().transpose(1, 2, 0)
         
-        # Fusión térmica
-        visualizacion = show_cam_on_image(img_norm, grayscale_cam, use_rgb=True)
+        # Clip por seguridad (los valores deben estar entre 0 y 1 para show_cam)
+        img_visual = np.clip(img_visual, 0, 1)
         
-        # Columna 1: Original
-        axes[i][0].imshow(img_norm[:, :, 0], cmap='gray')
+        # Fusión térmica usando la nueva API
+        visualizacion = show_cam_on_image(img_visual, grayscale_cam, use_rgb=True)
+        
+        # Columna 1: Original (usamos el canal 0, ya que los 3 son idénticos en escala de grises)
+        axes[i][0].imshow(img_visual[:, :, 0], cmap='gray')
         axes[i][0].set_title(f"Real: {nombre_real}", fontsize=12, fontweight='bold')
         axes[i][0].axis('off')
         

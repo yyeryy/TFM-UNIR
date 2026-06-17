@@ -37,9 +37,9 @@ from src.dataset import preparar_dataloaders
 def parse_args():
     parser = argparse.ArgumentParser(description="Entrenamiento controlado ResNet para PPMI")
 
-    # Rutas
-    parser.add_argument("--csv", type=str, default="data_index.csv")
-    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D")
+    # MODIFICACIÓN CRÍTICA: Actualizamos las rutas por defecto a la nueva base de datos MNI152
+    parser.add_argument("--csv", type=str, default="data/tabular/data_index.csv")
+    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas")
     parser.add_argument("--output-dir", type=str, default="models")
     parser.add_argument("--excel", type=str, default="resultados/experimentos_entrenamiento.xlsx")
 
@@ -79,7 +79,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
 
     # Naming y Logging
-    parser.add_argument("--run-name", type=str, default=None, help="Forzar un nombre. Si no, usará auto-versionado (v1, v2...)")
+    parser.add_argument("--run-name", type=str, default=None, help="Forzar nombre. Si no, usará auto-versionado (v1, v2...)")
     parser.add_argument("--eval-test", action="store_true")
     
     # WandB activado por defecto
@@ -126,7 +126,6 @@ def get_device(device_arg):
 
 
 def get_next_version(output_dir, model_name):
-    """Busca en la carpeta el último número de versión (vX) y devuelve el siguiente."""
     output_dir = Path(output_dir)
     if not output_dir.exists():
         return 1
