@@ -26,11 +26,8 @@ from src.dataset import preparar_dataloaders
 def parse_args():
     parser = argparse.ArgumentParser(description="Generador de Mapas de Calor (Grad-CAM) para TFM")
     parser.add_argument("--checkpoint", type=str, required=True, help="Ruta al archivo .pth del modelo entrenado")
-    
-    # MODIFICACIÓN: Apuntamos por defecto a las rutas nuevas y limpias
     parser.add_argument("--csv", type=str, default="data_index.csv")
     parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas")
-    
     parser.add_argument("--output-dir", type=str, default="graficas")
     parser.add_argument("--num-images", type=int, default=4, help="Numero de imagenes a analizar y graficar")
     return parser.parse_args()
@@ -68,12 +65,14 @@ def reconstruir_modelo(checkpoint, device):
 
 def desnormalizar_imagen(tensor):
     """
-    Revierte la normalización de ImageNet para que la imagen original
-    se pueda visualizar correctamente (sin colores/grises distorsionados).
+    Revierte la normalización de ImageNet extrayendo los datos directamente
+    del transformador oficial de PyTorch.
     """
-    pesos_resnet = ResNet50_Weights.DEFAULT
-    mean = torch.tensor(pesos_resnet.meta["mean"]).view(3, 1, 1)
-    std = torch.tensor(pesos_resnet.meta["std"]).view(3, 1, 1)
+    transform_oficial = ResNet50_Weights.DEFAULT.transforms()
+    
+    # Extraemos la media y desviación estandar correctamente
+    mean = torch.tensor(transform_oficial.mean).view(3, 1, 1)
+    std = torch.tensor(transform_oficial.std).view(3, 1, 1)
     
     tensor_desnorm = tensor.cpu() * std + mean
     return tensor_desnorm
@@ -105,7 +104,6 @@ def main():
     imagenes = imagenes.to(device)
     etiquetas = etiquetas.to(device)
 
-    # 3. Configurar Grad-CAM: Resnet50 usa 'layer4'
     target_layers = [modelo.layer4[-1]]
     cam = GradCAM(model=modelo, target_layers=target_layers)
 
@@ -126,30 +124,19 @@ def main():
         nombre_real = idx_to_class[etiqueta_real]
         nombre_pred = idx_to_class[prediccion_red]
         
-        # Objetivo de la explicabilidad
         target = [ClassifierOutputTarget(prediccion_red)]
-        
-        # Generar máscara de atención
         grayscale_cam = cam(input_tensor=tensor_img, targets=target)[0, :]
         
-        # MODIFICACIÓN CRÍTICA: Desnormalizamos la imagen para poder pintarla bien
         img_desnorm = desnormalizar_imagen(tensor_img[0])
-        
-        # La pasamos al formato HxWxC que requiere OpenCV/Matplotlib
         img_visual = img_desnorm.numpy().transpose(1, 2, 0)
-        
-        # Clip por seguridad (los valores deben estar entre 0 y 1 para show_cam)
         img_visual = np.clip(img_visual, 0, 1)
         
-        # Fusión térmica usando la nueva API
         visualizacion = show_cam_on_image(img_visual, grayscale_cam, use_rgb=True)
         
-        # Columna 1: Original (usamos el canal 0, ya que los 3 son idénticos en escala de grises)
         axes[i][0].imshow(img_visual[:, :, 0], cmap='gray')
         axes[i][0].set_title(f"Real: {nombre_real}", fontsize=12, fontweight='bold')
         axes[i][0].axis('off')
         
-        # Columna 2: Grad-CAM
         color_titulo = "green" if nombre_real == nombre_pred else "red"
         axes[i][1].imshow(visualizacion)
         axes[i][1].set_title(f"Predicción IA: {nombre_pred}", color=color_titulo, fontsize=12, fontweight='bold')
@@ -157,7 +144,6 @@ def main():
 
     plt.tight_layout()
     
-    # 5. Guardar resultado
     output_dir = PROJECT_ROOT / args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     ruta_guardado = output_dir / f"gradcam_analisis_{args_train.get('model', 'resnet')}.png"
