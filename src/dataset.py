@@ -48,7 +48,48 @@ class ParkinsonDataset(Dataset):
         return tensor_imagen, torch.tensor(etiqueta, dtype=torch.long)
 
 
-def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 'PD'], batch_size=32):
+def construir_transformaciones(roi=True, roi_frac=0.6):
+    """
+    Construye las transformaciones de train y eval.
+
+    ROI de entrada (nivel 2): si `roi=True`, se antepone un recorte central
+    (CenterCrop) reescalado a 224x224 que concentra la senal en la region de
+    interes anatomica (centrada gracias al registro MNI152) y reduce el peso
+    del fondo/bordes. El mismo `roi_prefix` se usa en train y eval para
+    garantizar coherencia entre fases.
+    """
+    transform_oficial = ResNet50_Weights.DEFAULT.transforms()
+    mean_oficial = transform_oficial.mean  # [0.485, 0.456, 0.406]
+    std_oficial = transform_oficial.std
+
+    # --- ROI de entrada al modelo (recorte central parametrizable) ---
+    roi_prefix = []
+    if roi:
+        crop_size = int(round(224 * roi_frac))
+        roi_prefix = [
+            transforms.CenterCrop(crop_size),
+            transforms.Resize((224, 224), antialias=True),
+        ]
+        print(f"[INFO] ROI de entrada ACTIVADO: CenterCrop({crop_size}) + Resize(224) (roi_frac={roi_frac}).")
+    else:
+        print("[INFO] ROI de entrada DESACTIVADO.")
+
+    normalize = transforms.Normalize(mean=mean_oficial, std=std_oficial)
+
+    train_transforms = transforms.Compose(
+        roi_prefix + [
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomAffine(degrees=5, translate=(0.05, 0.05)),
+            normalize,
+        ]
+    )
+    eval_transforms = transforms.Compose(roi_prefix + [normalize])
+
+    return train_transforms, eval_transforms
+
+
+def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 'PD'], batch_size=32,
+                         roi=True, roi_frac=0.6):
     ruta_imagenes = Path(ruta_imagenes)
     
     # 1. Cargar y limpiar
@@ -94,10 +135,12 @@ def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 
         f"DataLoader configurado con num_workers={trabajadores}, pin_memory={usar_pin_memory}."
     )
 
-    # 6. Crear Datasets y Loaders
-    train_dataset = ParkinsonDataset(df_train, ruta_imagenes)
-    val_dataset = ParkinsonDataset(df_val, ruta_imagenes)
-    test_dataset = ParkinsonDataset(df_test, ruta_imagenes)
+    # 6. Crear transformaciones (incluye ROI de entrada) y Datasets/Loaders
+    train_transforms, eval_transforms = construir_transformaciones(roi=roi, roi_frac=roi_frac)
+
+    train_dataset = ParkinsonDataset(df_train, ruta_imagenes, transformaciones=train_transforms)
+    val_dataset = ParkinsonDataset(df_val, ruta_imagenes, transformaciones=eval_transforms)
+    test_dataset = ParkinsonDataset(df_test, ruta_imagenes, transformaciones=eval_transforms)
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=trabajadores, pin_memory=usar_pin_memory)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=usar_pin_memory)

@@ -47,13 +47,19 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
     class_map = checkpoint.get("class_map", {"Control": 0, "PD": 1})
     clases_permitidas = list(class_map.keys())
     batch_size = args_train.get("batch_size", 32)
-    
+
+    # Reaplicar el mismo ROI de entrada usado en entrenamiento (coherencia train/eval)
+    roi = args_train.get("roi", True)
+    roi_frac = args_train.get("roi_frac", 0.6)
+
     # 1. Cargar Dataloader de Test
     _, _, test_loader, class_weights, _ = preparar_dataloaders(
         ruta_csv=PROJECT_ROOT / csv_path,
         ruta_imagenes=PROJECT_ROOT / images_dir,
         clases_permitidas=clases_permitidas,
-        batch_size=batch_size
+        batch_size=batch_size,
+        roi=roi,
+        roi_frac=roi_frac,
     )
     
     # 2. Reconstruir la arquitectura

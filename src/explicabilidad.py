@@ -92,12 +92,18 @@ def main():
     idx_to_class = {v: k for k, v in class_map.items()}
     clases_permitidas = list(class_map.keys())
 
+    # Reaplicar el mismo ROI de entrada usado en entrenamiento (coherencia train/Grad-CAM)
+    roi = args_train.get("roi", True)
+    roi_frac = args_train.get("roi_frac", 0.6)
+
     print(f"[INFO] Cargando datos de Test...")
     _, _, test_loader, _, _ = preparar_dataloaders(
         ruta_csv=PROJECT_ROOT / args.csv,
         ruta_imagenes=PROJECT_ROOT / args.images,
         clases_permitidas=clases_permitidas,
-        batch_size=args.num_images, 
+        batch_size=args.num_images,
+        roi=roi,
+        roi_frac=roi_frac,
     )
 
     imagenes, etiquetas = next(iter(test_loader))
