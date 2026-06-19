@@ -5,6 +5,7 @@ import sys
 import argparse
 from pathlib import Path
 import numpy as np
+import cv2
 import matplotlib.pyplot as plt
 
 import torch
@@ -63,6 +64,30 @@ def reconstruir_modelo(checkpoint, device):
     
     return model, clases_map, args_entrenamiento
 
+def reproyectar_cam_a_original(grayscale_cam, roi_frac, size=224):
+    """
+    Lleva el mapa Grad-CAM (calculado sobre la ENTRADA ROI, que es la unica
+    entrada valida porque el modelo se entreno con ella) a las coordenadas de
+    la imagen ORIGINAL 224x224.
+
+    Como el ROI de entrada es un CenterCrop(crop_size) + Resize(224)
+    determinista, su inversa es exacta: se reescala el mapa 224 -> crop_size y
+    se coloca en el centro de un lienzo 224x224 a ceros. El calor queda
+    confinado a la region central (el modelo nunca recibio informacion fuera
+    del recorte), pero se muestra sobre la anatomia completa de la original.
+    """
+    crop_size = int(round(size * roi_frac))
+    offset = (size - crop_size) // 2
+
+    cam_crop = cv2.resize(
+        grayscale_cam.astype(np.float32), (crop_size, crop_size),
+        interpolation=cv2.INTER_LINEAR,
+    )
+    cam_full = np.zeros((size, size), dtype=np.float32)
+    cam_full[offset:offset + crop_size, offset:offset + crop_size] = cam_crop
+    return cam_full
+
+
 def desnormalizar_imagen(tensor):
     """
     Revierte la normalización de ImageNet extrayendo los datos directamente
@@ -96,7 +121,7 @@ def main():
     roi = args_train.get("roi", True)
     roi_frac = args_train.get("roi_frac", 0.6)
 
-    print(f"[INFO] Cargando datos de Test...")
+    print(f"[INFO] Cargando datos de Test (entrada ROI para el modelo)...")
     _, _, test_loader, _, _ = preparar_dataloaders(
         ruta_csv=PROJECT_ROOT / args.csv,
         ruta_imagenes=PROJECT_ROOT / args.images,
@@ -109,6 +134,22 @@ def main():
     imagenes, etiquetas = next(iter(test_loader))
     imagenes = imagenes.to(device)
     etiquetas = etiquetas.to(device)
+
+    # Imagenes ORIGINALES (sin recorte ROI) para la visualizacion del Grad-CAM.
+    # Mismas particiones deterministas (random_state=42) y shuffle=False en test
+    # => el orden del lote coincide, por lo que imagenes_orig[i] corresponde a
+    # imagenes[i]. Solo se necesita si el modelo se entreno con ROI.
+    imagenes_orig = imagenes
+    if roi:
+        print(f"[INFO] Cargando imagenes originales 224x224 (sin ROI) para la visualizacion...")
+        _, _, test_loader_orig, _, _ = preparar_dataloaders(
+            ruta_csv=PROJECT_ROOT / args.csv,
+            ruta_imagenes=PROJECT_ROOT / args.images,
+            clases_permitidas=clases_permitidas,
+            batch_size=args.num_images,
+            roi=False,
+        )
+        imagenes_orig, _ = next(iter(test_loader_orig))
 
     target_layers = [modelo.layer4[-1]]
     cam = GradCAM(model=modelo, target_layers=target_layers)
@@ -131,13 +172,23 @@ def main():
         nombre_pred = idx_to_class[prediccion_red]
         
         target = [ClassifierOutputTarget(prediccion_red)]
+        # Grad-CAM SIEMPRE sobre la entrada ROI (unica entrada valida: el
+        # modelo se entreno con ella).
         grayscale_cam = cam(input_tensor=tensor_img, targets=target)[0, :]
-        
-        img_desnorm = desnormalizar_imagen(tensor_img[0])
+
+        if roi:
+            # Reproyectar el mapa de calor a coordenadas de la imagen original
+            # y mostrarlo sobre la original 224x224 completa.
+            cam_para_mostrar = reproyectar_cam_a_original(grayscale_cam, roi_frac)
+            img_desnorm = desnormalizar_imagen(imagenes_orig[i])
+        else:
+            cam_para_mostrar = grayscale_cam
+            img_desnorm = desnormalizar_imagen(tensor_img[0])
+
         img_visual = img_desnorm.numpy().transpose(1, 2, 0)
         img_visual = np.clip(img_visual, 0, 1)
-        
-        visualizacion = show_cam_on_image(img_visual, grayscale_cam, use_rgb=True)
+
+        visualizacion = show_cam_on_image(img_visual, cam_para_mostrar, use_rgb=True)
         
         axes[i][0].imshow(img_visual[:, :, 0], cmap='gray')
         axes[i][0].set_title(f"Real: {nombre_real}", fontsize=12, fontweight='bold')
