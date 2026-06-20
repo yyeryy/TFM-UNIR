@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.dataset import preparar_dataloaders
+from src.dataset import normalizar_roi_frac, preparar_dataloaders
 from src.training_loop import run_epoch
 
 def get_device():
@@ -50,7 +50,7 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
 
     # Reaplicar el mismo ROI de entrada usado en entrenamiento (coherencia train/eval)
     roi = args_train.get("roi", True)
-    roi_frac = args_train.get("roi_frac", 0.6)
+    roi_frac = normalizar_roi_frac(args_train.get("roi_frac", 0.6))
 
     # 1. Cargar Dataloader de Test
     _, _, test_loader, class_weights, _ = preparar_dataloaders(

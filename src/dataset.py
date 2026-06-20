@@ -9,6 +9,16 @@ from sklearn.model_selection import train_test_split
 from torchvision import transforms
 from torchvision.models import ResNet50_Weights
 
+
+def normalizar_roi_frac(valor):
+    """Acepta el ROI como fraccion (0.8) o porcentaje (80)."""
+    roi_frac = float(valor)
+    if 1 < roi_frac <= 100:
+        roi_frac /= 100.0
+    if not 0 < roi_frac <= 1:
+        raise ValueError("roi_frac debe estar entre 0 y 1, o expresarse como porcentaje entre 1 y 100.")
+    return roi_frac
+
 class ParkinsonDataset(Dataset):
     def __init__(self, df_imagenes, ruta_imagenes, transformaciones=None):
         self.df = df_imagenes.reset_index(drop=True)
@@ -58,6 +68,7 @@ def construir_transformaciones(roi=True, roi_frac=0.6):
     del fondo/bordes. El mismo `roi_prefix` se usa en train y eval para
     garantizar coherencia entre fases.
     """
+    roi_frac = normalizar_roi_frac(roi_frac)
     transform_oficial = ResNet50_Weights.DEFAULT.transforms()
     mean_oficial = transform_oficial.mean  # [0.485, 0.456, 0.406]
     std_oficial = transform_oficial.std

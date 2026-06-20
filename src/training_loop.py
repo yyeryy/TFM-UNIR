@@ -31,7 +31,7 @@ from sklearn.metrics import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.dataset import preparar_dataloaders
+from src.dataset import normalizar_roi_frac, preparar_dataloaders
 
 
 def parse_args():
@@ -78,8 +78,12 @@ def parse_args():
         default=True,
         help="Activa el ROI de entrada (CenterCrop central reescalado a 224). Usa --no-roi para desactivarlo (Por defecto: activado)."
     )
-    parser.add_argument("--roi-frac", type=float, default=0.6,
-                        help="Fraccion del lado a conservar en el recorte central (0.6 -> 134x134).")
+    parser.add_argument(
+        "--roi-frac",
+        type=normalizar_roi_frac,
+        default=0.6,
+        help="Lado a conservar como fraccion o porcentaje (0.8 u 80 -> 179x179).",
+    )
 
     # Configuración de red y hardware
     parser.add_argument("--freeze", type=str, default="layer4", choices=["head", "layer4", "none"])

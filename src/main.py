@@ -69,6 +69,8 @@ def main():
         sys.argv = [
             sys.argv[0], 
             "--checkpoint", str(checkpoint_exacto), 
+            "--csv", args.csv,
+            "--images", args.images,
             "--output-dir", "XAI"
         ]
         

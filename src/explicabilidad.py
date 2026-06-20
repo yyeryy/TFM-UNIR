@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 from torchvision import models
 from torchvision.models import ResNet50_Weights
 
@@ -22,7 +23,12 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.dataset import preparar_dataloaders
+from src.dataset import (
+    ParkinsonDataset,
+    construir_transformaciones,
+    normalizar_roi_frac,
+    preparar_dataloaders,
+)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generador de Mapas de Calor (Grad-CAM) para TFM")
@@ -76,6 +82,7 @@ def reproyectar_cam_a_original(grayscale_cam, roi_frac, size=224):
     confinado a la region central (el modelo nunca recibio informacion fuera
     del recorte), pero se muestra sobre la anatomia completa de la original.
     """
+    roi_frac = normalizar_roi_frac(roi_frac)
     crop_size = int(round(size * roi_frac))
     offset = (size - crop_size) // 2
 
@@ -119,7 +126,7 @@ def main():
 
     # Reaplicar el mismo ROI de entrada usado en entrenamiento (coherencia train/Grad-CAM)
     roi = args_train.get("roi", True)
-    roi_frac = args_train.get("roi_frac", 0.6)
+    roi_frac = normalizar_roi_frac(args_train.get("roi_frac", 0.6))
 
     print(f"[INFO] Cargando datos de Test (entrada ROI para el modelo)...")
     _, _, test_loader, _, _ = preparar_dataloaders(
@@ -135,19 +142,23 @@ def main():
     imagenes = imagenes.to(device)
     etiquetas = etiquetas.to(device)
 
-    # Imagenes ORIGINALES (sin recorte ROI) para la visualizacion del Grad-CAM.
-    # Mismas particiones deterministas (random_state=42) y shuffle=False en test
-    # => el orden del lote coincide, por lo que imagenes_orig[i] corresponde a
-    # imagenes[i]. Solo se necesita si el modelo se entreno con ROI.
+    # Recuperar las mismas muestras sin ROI solo para visualizarlas. Reutilizar
+    # el dataframe del test evita volver a escanear y dividir todo el dataset.
     imagenes_orig = imagenes
     if roi:
         print(f"[INFO] Cargando imagenes originales 224x224 (sin ROI) para la visualizacion...")
-        _, _, test_loader_orig, _, _ = preparar_dataloaders(
-            ruta_csv=PROJECT_ROOT / args.csv,
-            ruta_imagenes=PROJECT_ROOT / args.images,
-            clases_permitidas=clases_permitidas,
+        _, transformacion_original = construir_transformaciones(roi=False)
+        dataset_original = ParkinsonDataset(
+            test_loader.dataset.df,
+            test_loader.dataset.ruta_imagenes,
+            transformaciones=transformacion_original,
+        )
+        test_loader_orig = DataLoader(
+            dataset_original,
             batch_size=args.num_images,
-            roi=False,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=False,
         )
         imagenes_orig, _ = next(iter(test_loader_orig))
 
