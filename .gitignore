@@ -66,3 +66,6 @@ tensorboard/
 .vscode/
 .idea/
 *.swp
+
+.cache/
+.matplotlib_cache/
