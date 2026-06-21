@@ -13,7 +13,6 @@ import multiprocessing
 warnings.filterwarnings("ignore")
 os.environ["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = "1"
 
-# DEFINICIÓN DE RUTAS
 DIRECTORIO_RAIZ = Path(__file__).resolve().parent.parent
 RUTA_ORIGEN = DIRECTORIO_RAIZ / "data" / "PPMI"
 RUTA_DESTINO = DIRECTORIO_RAIZ / "data" / "PPMI_Procesado_2D_Atlas"
@@ -21,8 +20,6 @@ RUTA_DESTINO = DIRECTORIO_RAIZ / "data" / "PPMI_Procesado_2D_Atlas"
 NUMERO_DE_CORTES = 15
 
 def seleccionar_mejor_secuencia(carpetas_dicom):
-    """Selecciona la mejor secuencia y bloquea archivos basura."""
-    # ESCUDO 1: Filtrar localizadores y calibraciones
     carpetas_validas = []
     for carpeta in carpetas_dicom:
         nombre = carpeta.upper()
@@ -59,23 +56,18 @@ def procesar_un_sujeto(sujeto_path, ruta_t1_mni, ruta_mask_mni):
         if not secuencia_elegida:
             return "SOLO_LOCALIZADORES"
             
-        # Lectura inicial para auditoría
         img_tio = tio.ScalarImage(secuencia_elegida)
         
-        # ESCUDO 2: Filtro Geométrico (Rechazar cortes gruesos)
-        # Si el espaciado en X, Y o Z es mayor a 2.5mm, la imagen no es 3D de alta resolución
         espaciado_maximo = max(img_tio.spacing)
         if espaciado_maximo > 2.5:
             return f"DESCARTADO_ANISOTROPICO (Espaciado {espaciado_maximo:.1f}mm)"
 
-        # 2. Carga y Orientación del Molde (MNI152)
         atlas_mni = ants.image_read(ruta_t1_mni)
         atlas_mni_ras = ants.reorient_image2(atlas_mni, 'RAS')
         
         mascara_mni = ants.image_read(ruta_mask_mni)
         mascara_mni_ras = ants.reorient_image2(mascara_mni, 'RAS')
         
-        # 3. Lectura Robusta con TorchIO
         pipeline_previa = tio.Compose([
             tio.ToCanonical(),           
             tio.Resample((1.0, 1.0, 1.0)) 
@@ -86,7 +78,6 @@ def procesar_un_sujeto(sujeto_path, ruta_t1_mni, ruta_mask_mni):
             temp_path = tmp.name
         img_tio_pre.save(temp_path)
 
-        # 4. Registro Rígido
         imagen_paciente_ras = ants.image_read(temp_path)
         registro = ants.registration(
             fixed=atlas_mni_ras, 
@@ -96,10 +87,8 @@ def procesar_un_sujeto(sujeto_path, ruta_t1_mni, ruta_mask_mni):
         volumen_alineado = registro['warpedmovout']
         os.remove(temp_path) 
         
-        # 5. Skull Stripping
         volumen_sin_craneo = volumen_alineado * mascara_mni_ras
         
-        # 6. Normalización Avanzada
         array_np = volumen_sin_craneo.numpy()
         tensor_final_tio = tio.ScalarImage(tensor=np.expand_dims(array_np, axis=0))
         
@@ -110,7 +99,6 @@ def procesar_un_sujeto(sujeto_path, ruta_t1_mni, ruta_mask_mni):
         imagen_procesada = pipeline_post(tensor_final_tio)
         matriz_final = imagen_procesada.data[0].numpy()
         
-        # 7. Extracción de Cortes
         z_anatomico_parkinson = 75 
         corte_inicial = z_anatomico_parkinson - (NUMERO_DE_CORTES // 2)
         corte_final = corte_inicial + NUMERO_DE_CORTES

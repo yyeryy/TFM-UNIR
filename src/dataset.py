@@ -11,7 +11,6 @@ from torchvision.models import ResNet50_Weights
 
 
 def normalizar_roi_frac(valor):
-    """Acepta el ROI como fraccion (0.8) o porcentaje (80)."""
     roi_frac = float(valor)
     if 1 < roi_frac <= 100:
         roi_frac /= 100.0
@@ -28,8 +27,7 @@ class ParkinsonDataset(Dataset):
         if transformaciones is None:
             transform_oficial = ResNet50_Weights.DEFAULT.transforms()
 
-            # 2. Le extraemos sus atributos nativos de media y desviación estándar
-            mean_oficial = transform_oficial.mean  # Extrae automáticamente [0.485, 0.456, 0.406]
+            mean_oficial = transform_oficial.mean
             std_oficial = transform_oficial.std
             
             self.transformaciones = transforms.Compose([
@@ -63,21 +61,11 @@ class ParkinsonDataset(Dataset):
 
 
 def construir_transformaciones(roi=True, roi_frac=0.6):
-    """
-    Construye las transformaciones de train y eval.
-
-    ROI de entrada (nivel 2): si `roi=True`, se antepone un recorte central
-    (CenterCrop) reescalado a 224x224 que concentra la senal en la region de
-    interes anatomica (centrada gracias al registro MNI152) y reduce el peso
-    del fondo/bordes. El mismo `roi_prefix` se usa en train y eval para
-    garantizar coherencia entre fases.
-    """
     roi_frac = normalizar_roi_frac(roi_frac)
     transform_oficial = ResNet50_Weights.DEFAULT.transforms()
     mean_oficial = transform_oficial.mean  # [0.485, 0.456, 0.406]
     std_oficial = transform_oficial.std
 
-    # --- ROI de entrada al modelo (recorte central parametrizable) ---
     roi_prefix = []
     if roi:
         crop_size = int(round(224 * roi_frac))
@@ -115,33 +103,26 @@ def preparar_dataloaders(
 ):
     ruta_imagenes = Path(ruta_imagenes)
     
-    # 1. Cargar y limpiar
     df_clinico = pd.read_csv(ruta_csv)
     
-    # Fix para Mac/Windows si quedaran decimales o espacios en el CSV
     df_clinico['Subject'] = df_clinico['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0])
     df_clinico['Group'] = df_clinico['Group'].astype(str).str.strip()
     
-    # 2. FILTRO DINÁMICO: Quedarse solo con las clases solicitadas
     df_clinico = df_clinico[df_clinico['Group'].isin(clases_permitidas)]
     
     df_unico = df_clinico.drop_duplicates(subset=['Subject']).copy()
     
-    # 3. Mapeo automático de etiquetas (Ej: Control=0, PD=1, Prodromal=2)
     mapeo_etiquetas = {clase: idx for idx, clase in enumerate(clases_permitidas)}
     df_unico['Etiqueta'] = df_unico['Group'].map(mapeo_etiquetas)
     
-    # 4. Vincular con los archivos físicos
     archivos_npy = [f.name for f in ruta_imagenes.glob("*.npy")]
     df_archivos = pd.DataFrame({'Archivo': archivos_npy})
     df_archivos['Subject'] = df_archivos['Archivo'].apply(lambda x: x.split('_')[0])
     
-    # Inner join para asegurar que solo cargamos archivos de los sujetos filtrados
     df_master = pd.merge(df_archivos, df_unico[['Subject', 'Etiqueta']], on='Subject', how='inner')
     
     sujetos_unicos = df_master[['Subject', 'Etiqueta']].drop_duplicates()
     
-    # 5. Splits a nivel de paciente (Evita Data Leakage entre cortes del mismo paciente)
     train_subj, resto_subj = train_test_split(sujetos_unicos, test_size=0.30, stratify=sujetos_unicos['Etiqueta'], random_state=42)
     val_subj, test_subj = train_test_split(resto_subj, test_size=0.50, stratify=resto_subj['Etiqueta'], random_state=42)
     
@@ -149,7 +130,6 @@ def preparar_dataloaders(
     df_val = df_master[df_master['Subject'].isin(val_subj['Subject'])]
     df_test = df_master[df_master['Subject'].isin(test_subj['Subject'])]
     
-    # --- FIX MULTIPLATAFORMA PARA DATALOADERS ---
     sistema = platform.system()
     trabajadores = 0 if sistema == 'Darwin' else 4
     usar_pin_memory = False if sistema == 'Darwin' else True
@@ -158,7 +138,6 @@ def preparar_dataloaders(
         f"DataLoader configurado con num_workers={trabajadores}, pin_memory={usar_pin_memory}."
     )
 
-    # 6. Crear transformaciones (incluye ROI de entrada) y Datasets/Loaders
     train_transforms, eval_transforms = construir_transformaciones(roi=roi, roi_frac=roi_frac)
 
     train_dataset = ParkinsonDataset(
@@ -241,10 +220,8 @@ if __name__ == "__main__":
         script_dir = Path(__file__).resolve().parent
         project_root = script_dir.parent
         
-        # MODIFICACIÓN: Apuntamos al csv maestro final
         ruta_csv = project_root / "data_index.csv" 
         
-        # MODIFICACIÓN CRÍTICA: Apuntar a la nueva carpeta de imágenes limpias del Atlas
         ruta_img = project_root / "data" / "PPMI_Procesado_2D_Atlas"
         
         if torch.cuda.is_available():

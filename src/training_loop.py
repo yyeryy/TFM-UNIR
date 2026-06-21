@@ -37,18 +37,15 @@ from src.dataset import normalizar_roi_frac, preparar_dataloaders
 def parse_args():
     parser = argparse.ArgumentParser(description="Entrenamiento controlado ResNet para PPMI")
 
-    # MODIFICACIÓN CRÍTICA: Actualizamos las rutas por defecto a la nueva base de datos MNI152
     parser.add_argument("--csv", type=str, default="data_index.csv")
     parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas")
     parser.add_argument("--output-dir", type=str, default="models")
     parser.add_argument("--excel", type=str, default="resultados/experimentos_entrenamiento.xlsx")
 
-    # Modelo y Clases
     parser.add_argument("--model", type=str, default="resnet50", choices=["resnet18", "resnet50"])
     parser.add_argument("--classes", nargs="+", default=["Control", "PD"])
     parser.add_argument("--num-classes", type=int, default=2)
 
-    # Hiperparámetros de entrenamiento
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=5e-5)
@@ -64,13 +61,11 @@ def parse_args():
         help="Balanceo por pesos en la loss, muestreo equilibrado o sin balanceo.",
     )
 
-    # Optimizador y Scheduler
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["adamw", "adam"])
     parser.add_argument("--scheduler", type=str, default="plateau", choices=["plateau", "cosine", "none"])
     parser.add_argument("--scheduler-patience", type=int, default=3)
     parser.add_argument("--scheduler-factor", type=float, default=0.3)
 
-    # Early Stopping y Monitorización
     parser.add_argument(
         "--monitor",
         type=str,
@@ -83,7 +78,6 @@ def parse_args():
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--min-delta", type=float, default=1e-4)
 
-    # ROI de entrada al modelo (recorte central)
     parser.add_argument(
         "--roi",
         action=argparse.BooleanOptionalAction,
@@ -97,18 +91,15 @@ def parse_args():
         help="Lado a conservar como fraccion o porcentaje (0.8 u 80 -> 179x179).",
     )
 
-    # Configuración de red y hardware
     parser.add_argument("--freeze", type=str, default="layer4", choices=["head", "layer4", "none"])
     parser.add_argument("--no-pretrained", action="store_true")
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
 
-    # Naming y Logging
     parser.add_argument("--run-name", type=str, default=None, help="Forzar nombre. Si no, usará auto-versionado (v1, v2...)")
     parser.add_argument("--eval-test", action="store_true")
     
-    # WandB activado por defecto
     parser.add_argument(
         "--wandb",
         action=argparse.BooleanOptionalAction,
@@ -422,14 +413,12 @@ def main():
     output_dir = PROJECT_ROOT / args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- VERSIONADO AUTOMÁTICO ---
     if args.run_name:
         run_name = args.run_name
     else:
         version_num = get_next_version(output_dir, args.model)
         run_name = f"{args.model}_v{version_num}"
 
-    # --- CONFIGURACIÓN WANDB ---
     if args.wandb:
         import wandb
         wandb.init(
@@ -534,7 +523,6 @@ def main():
 
         lr_now = optimizer.param_groups[0]["lr"]
 
-        # Logging a WandB
         if args.wandb:
             wandb.log({
                 "epoch": epoch,

@@ -24,7 +24,6 @@ def main():
 
     try:
         df_maestro = pd.read_csv(archivo_maestro)
-        # La solución definitiva para evitar el problema de ".0" en Mac
         df_maestro['Subject'] = df_maestro['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0]) 
                
         subjects = set(df_maestro['Subject'])

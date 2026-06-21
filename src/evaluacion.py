@@ -8,7 +8,6 @@ from pathlib import Path
 from torchvision import models
 import argparse
 
-# Asegurar importaciones relativas desde la raíz del proyecto
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -17,7 +16,6 @@ from src.dataset import normalizar_roi_frac, preparar_dataloaders
 from src.training_loop import run_epoch
 
 def get_device():
-    """Fuerza la detección del mejor hardware disponible en Mac y Windows"""
     if torch.cuda.is_available():
         dispositivo = torch.device("cuda")
         print(f"[INFO] Hardware detectado: NVIDIA GPU ({torch.cuda.get_device_name(0)}) - Usando CUDA")
@@ -41,19 +39,16 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
 
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
-    # Extraer metadatos guardados en el entrenamiento
     args_train = checkpoint.get("args", {})
     model_name = checkpoint.get("model_name", args_train.get("model", "resnet50"))
     class_map = checkpoint.get("class_map", {"Control": 0, "PD": 1})
     clases_permitidas = list(class_map.keys())
     batch_size = args_train.get("batch_size", 32)
 
-    # Reaplicar el mismo ROI de entrada usado en entrenamiento (coherencia train/eval)
     roi = args_train.get("roi", True)
     roi_frac = normalizar_roi_frac(args_train.get("roi_frac", 0.6))
     balance_strategy = args_train.get("balance_strategy", "class_weights")
 
-    # 1. Cargar Dataloader de Test
     _, _, test_loader, class_weights, _ = preparar_dataloaders(
         ruta_csv=PROJECT_ROOT / csv_path,
         ruta_imagenes=PROJECT_ROOT / images_dir,
@@ -65,7 +60,6 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
         return_subject=True,
     )
     
-    # 2. Reconstruir la arquitectura
     if model_name == "resnet18":
         model = models.resnet18(weights=None)
     elif model_name == "resnet50":
@@ -83,19 +77,16 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
     else:
         model.fc = nn.Linear(num_features, len(clases_permitidas))
     
-    # Cargar los pesos entrenados y poner en modo evaluación
     model.load_state_dict(state_dict)
     model = model.to(device)
     model.eval()
     
-    # 3. Configurar criterio de pérdida
     class_weights = class_weights.to(device)
     criterion = nn.CrossEntropyLoss(
         weight=class_weights,
         label_smoothing=args_train.get("label_smoothing", 0.0),
     )
     
-    # 4. Ejecutar evaluación en Test
     print(f"[EVALUACIÓN] Procesando lote de Test independiente...")
     test_metrics = run_epoch(
         model=model,
@@ -110,7 +101,6 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluación manual de modelos en el conjunto de Test")
     parser.add_argument("--checkpoint", type=str, required=True, help="Ruta al archivo .pth que quieres evaluar")
-    # MODIFICACIÓN CRÍTICA: Apuntamos por defecto a las rutas nuevas
     parser.add_argument("--csv", type=str, default="data_index.csv", help="Ruta al archivo de datos CSV")
     parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas", help="Ruta a las imagenes procesadas")
     args = parser.parse_args()
@@ -125,7 +115,6 @@ if __name__ == "__main__":
     print(" RESULTADOS FINALES EN TEST (Datos Invisibles)")
     print("="*50)
     
-    # Imprimir métricas limpias excluyendo la matriz cruda
     for k, v in metrics.items():
         if k != "confusion_matrix" and v is not None:
             if isinstance(v, float):

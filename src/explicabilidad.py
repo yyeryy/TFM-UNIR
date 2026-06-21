@@ -14,12 +14,10 @@ from torch.utils.data import DataLoader
 from torchvision import models
 from torchvision.models import ResNet50_Weights
 
-# Librerías de XAI
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
-# Configurar rutas
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -73,8 +71,6 @@ def reconstruir_modelo(checkpoint, device):
 
     model.load_state_dict(state_dict)
     model = model.to(device)
-    # Grad-CAM necesita gradientes en el backbone aunque durante el entrenamiento
-    # se haya congelado y solo se haya optimizado la cabeza clasificadora.
     for parameter in model.parameters():
         parameter.requires_grad_(True)
     model.eval()
@@ -82,17 +78,6 @@ def reconstruir_modelo(checkpoint, device):
     return model, clases_map, args_entrenamiento
 
 def reproyectar_cam_a_original(grayscale_cam, roi_frac, size=224):
-    """
-    Lleva el mapa Grad-CAM (calculado sobre la ENTRADA ROI, que es la unica
-    entrada valida porque el modelo se entreno con ella) a las coordenadas de
-    la imagen ORIGINAL 224x224.
-
-    Como el ROI de entrada es un CenterCrop(crop_size) + Resize(224)
-    determinista, su inversa es exacta: se reescala el mapa 224 -> crop_size y
-    se coloca en el centro de un lienzo 224x224 a ceros. El calor queda
-    confinado a la region central (el modelo nunca recibio informacion fuera
-    del recorte), pero se muestra sobre la anatomia completa de la original.
-    """
     roi_frac = normalizar_roi_frac(roi_frac)
     crop_size = int(round(size * roi_frac))
     offset = (size - crop_size) // 2
@@ -107,13 +92,8 @@ def reproyectar_cam_a_original(grayscale_cam, roi_frac, size=224):
 
 
 def desnormalizar_imagen(tensor):
-    """
-    Revierte la normalización de ImageNet extrayendo los datos directamente
-    del transformador oficial de PyTorch.
-    """
     transform_oficial = ResNet50_Weights.DEFAULT.transforms()
     
-    # Extraemos la media y desviación estandar correctamente
     mean = torch.tensor(transform_oficial.mean).view(3, 1, 1)
     std = torch.tensor(transform_oficial.std).view(3, 1, 1)
     
@@ -135,7 +115,6 @@ def main():
     idx_to_class = {v: k for k, v in class_map.items()}
     clases_permitidas = list(class_map.keys())
 
-    # Reaplicar el mismo ROI de entrada usado en entrenamiento (coherencia train/Grad-CAM)
     roi = args_train.get("roi", True)
     roi_frac = normalizar_roi_frac(args_train.get("roi_frac", 0.6))
 
@@ -153,8 +132,6 @@ def main():
     imagenes = imagenes.to(device)
     etiquetas = etiquetas.to(device)
 
-    # Recuperar las mismas muestras sin ROI solo para visualizarlas. Reutilizar
-    # el dataframe del test evita volver a escanear y dividir todo el dataset.
     imagenes_orig = imagenes
     if roi:
         print(f"[INFO] Cargando imagenes originales 224x224 (sin ROI) para la visualizacion...")
@@ -194,13 +171,9 @@ def main():
         nombre_pred = idx_to_class[prediccion_red]
         
         target = [ClassifierOutputTarget(prediccion_red)]
-        # Grad-CAM SIEMPRE sobre la entrada ROI (unica entrada valida: el
-        # modelo se entreno con ella).
         grayscale_cam = cam(input_tensor=tensor_img, targets=target)[0, :]
 
         if roi:
-            # Reproyectar el mapa de calor a coordenadas de la imagen original
-            # y mostrarlo sobre la original 224x224 completa.
             cam_para_mostrar = reproyectar_cam_a_original(grayscale_cam, roi_frac)
             img_desnorm = desnormalizar_imagen(imagenes_orig[i])
         else:

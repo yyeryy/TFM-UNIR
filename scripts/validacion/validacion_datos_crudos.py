@@ -3,7 +3,6 @@ import sys
 import glob
 import pandas as pd
 
-# Configuracion de rutas
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(script_dir)) 
 
@@ -42,7 +41,6 @@ def main():
 
     status_ok = True
 
-    # 1. Verificacion de CSV crudos
     print("\n[1/5] Comprobando archivos de metadatos CSV...")
     df_pd = load_csv(csv_pd_control)
     df_prod = load_csv(csv_prodromal)
@@ -53,12 +51,10 @@ def main():
 
     print(f"[OK] Cargados {len(df_pd)} registros PD/Control y {len(df_prod)} registros Prodromal.")
 
-    # Fix para Mac/Windows: limpieza estricta de decimales y espacios
     subjects_pd = set(df_pd['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0]))
     subjects_prod = set(df_prod['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0]))
     all_subjects_raw = subjects_pd.union(subjects_prod)
 
-    # 2. Verificacion de cruce de datos
     print("\n[2/5] Verificando interseccion de cohortes (Data Leakage)...")
     intersection = subjects_pd.intersection(subjects_prod)
     
@@ -68,7 +64,6 @@ def main():
         print(f"[ERROR] Se detectaron {len(intersection)} sujetos repetidos: {intersection}")
         status_ok = False
 
-    # 3. Verificacion de directorios de imagenes
     print("\n[3/5] Comprobando directorios fisicos de imagenes...")
     missing_dirs = []
     
@@ -84,7 +79,6 @@ def main():
         print("[INFO] Accion requerida: Descargar las imagenes crudas en data/PPMI/")
         status_ok = False
 
-    # 4. Verificacion de XML
     print("\n[4/5] Comprobando archivos XML de metadatos...")
     missing_xmls = 0
     for subject_id in all_subjects_raw:
@@ -96,7 +90,6 @@ def main():
     else:
         print(f"[WARNING] Faltan metadatos XML para {missing_xmls} sujetos. (Proceso no bloqueante)")
 
-    # 5. Verificacion del Indice Maestro con formato original
     print("\n[5/5] Comprobando el Indice Maestro (data_index.csv)...")
     if not os.path.exists(archivo_maestro):
         print("[ERROR] El archivo data_index.csv no existe en la raiz del proyecto.")
@@ -109,7 +102,6 @@ def main():
                 print("[ERROR] data_index.csv no tiene la columna original 'Subject'.")
                 status_ok = False
             else:
-                # Fix para Mac/Windows en el maestro
                 subjects_maestro = set(df_maestro['Subject'].astype(str).str.strip().apply(lambda x: x.split('.')[0]))
                 
                 faltan_en_maestro = all_subjects_raw - subjects_maestro
@@ -127,7 +119,6 @@ def main():
             print(f"[ERROR] Fallo al leer data_index.csv: {e}")
             status_ok = False
 
-    # Resultado
     print("\nResumen de validacion:")
     if status_ok:
         print("[ESTADO] PASSED. Pipeline de datos completo e integro.")

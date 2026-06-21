@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import sys
 
-# Configuracion de rutas
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 
@@ -25,7 +24,6 @@ def main():
     df_pd = pd.read_csv(csv_pd_control)
     df_prod = pd.read_csv(csv_prodromal)
 
-    # Unir sin alterar columnas (mantiene la estructura original exacta)
     df_completo = pd.concat([df_pd, df_prod], ignore_index=True)
 
     print("[2/2] Guardando data_index.csv con la estructura original...")
