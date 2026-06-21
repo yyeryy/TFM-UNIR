@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
 from torchvision.models import ResNet50_Weights
@@ -20,9 +20,10 @@ def normalizar_roi_frac(valor):
     return roi_frac
 
 class ParkinsonDataset(Dataset):
-    def __init__(self, df_imagenes, ruta_imagenes, transformaciones=None):
+    def __init__(self, df_imagenes, ruta_imagenes, transformaciones=None, return_subject=False):
         self.df = df_imagenes.reset_index(drop=True)
         self.ruta_imagenes = Path(ruta_imagenes)
+        self.return_subject = return_subject
         
         if transformaciones is None:
             transform_oficial = ResNet50_Weights.DEFAULT.transforms()
@@ -55,7 +56,10 @@ class ParkinsonDataset(Dataset):
         if self.transformaciones:
             tensor_imagen = self.transformaciones(tensor_imagen)
             
-        return tensor_imagen, torch.tensor(etiqueta, dtype=torch.long)
+        etiqueta_tensor = torch.tensor(etiqueta, dtype=torch.long)
+        if self.return_subject:
+            return tensor_imagen, etiqueta_tensor, str(self.df.loc[idx, 'Subject'])
+        return tensor_imagen, etiqueta_tensor
 
 
 def construir_transformaciones(roi=True, roi_frac=0.6):
@@ -99,8 +103,16 @@ def construir_transformaciones(roi=True, roi_frac=0.6):
     return train_transforms, eval_transforms
 
 
-def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 'PD'], batch_size=32,
-                         roi=True, roi_frac=0.6):
+def preparar_dataloaders(
+    ruta_csv,
+    ruta_imagenes,
+    clases_permitidas=['Control', 'PD'],
+    batch_size=32,
+    roi=True,
+    roi_frac=0.6,
+    balance_strategy="class_weights",
+    return_subject=False,
+):
     ruta_imagenes = Path(ruta_imagenes)
     
     # 1. Cargar y limpiar
@@ -149,17 +161,74 @@ def preparar_dataloaders(ruta_csv, ruta_imagenes, clases_permitidas=['Control', 
     # 6. Crear transformaciones (incluye ROI de entrada) y Datasets/Loaders
     train_transforms, eval_transforms = construir_transformaciones(roi=roi, roi_frac=roi_frac)
 
-    train_dataset = ParkinsonDataset(df_train, ruta_imagenes, transformaciones=train_transforms)
-    val_dataset = ParkinsonDataset(df_val, ruta_imagenes, transformaciones=eval_transforms)
-    test_dataset = ParkinsonDataset(df_test, ruta_imagenes, transformaciones=eval_transforms)
-    
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=trabajadores, pin_memory=usar_pin_memory)
+    train_dataset = ParkinsonDataset(
+        df_train,
+        ruta_imagenes,
+        transformaciones=train_transforms,
+        return_subject=return_subject,
+    )
+    val_dataset = ParkinsonDataset(
+        df_val,
+        ruta_imagenes,
+        transformaciones=eval_transforms,
+        return_subject=return_subject,
+    )
+    test_dataset = ParkinsonDataset(
+        df_test,
+        ruta_imagenes,
+        transformaciones=eval_transforms,
+        return_subject=return_subject,
+    )
+
+    estrategias_validas = {"class_weights", "sampler", "none"}
+    if balance_strategy not in estrategias_validas:
+        raise ValueError(
+            f"balance_strategy debe ser una de {sorted(estrategias_validas)}; "
+            f"recibido: {balance_strategy}"
+        )
+
+    conteos_clase = df_train['Etiqueta'].value_counts().sort_index()
+    conteos_clase = conteos_clase.reindex(range(len(clases_permitidas)), fill_value=0)
+    if (conteos_clase == 0).any():
+        raise ValueError("El split de entrenamiento no contiene muestras de todas las clases.")
+
+    train_sampler = None
+    if balance_strategy == "sampler":
+        pesos_por_clase = (1.0 / conteos_clase).to_dict()
+        pesos_muestras = df_train['Etiqueta'].map(pesos_por_clase).to_numpy(copy=True)
+        generator = torch.Generator().manual_seed(42)
+        train_sampler = WeightedRandomSampler(
+            weights=torch.as_tensor(pesos_muestras, dtype=torch.double),
+            num_samples=len(pesos_muestras),
+            replacement=True,
+            generator=generator,
+        )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
+        num_workers=trabajadores,
+        pin_memory=usar_pin_memory,
+    )
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=usar_pin_memory)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=trabajadores, pin_memory=usar_pin_memory)
-    
-    conteos_clase = df_train['Etiqueta'].value_counts().sort_index()
+
     total_muestras = len(df_train)
-    pesos_clase = torch.tensor([total_muestras / (len(clases_permitidas) * c) for c in conteos_clase]).float()
+    if balance_strategy == "class_weights":
+        pesos_clase = torch.tensor([
+            total_muestras / (len(clases_permitidas) * c)
+            for c in conteos_clase
+        ]).float()
+    else:
+        pesos_clase = torch.ones(len(clases_permitidas), dtype=torch.float32)
+
+    print(
+        f"[INFO] Balanceo: {balance_strategy}. "
+        f"Train={len(df_train)} imagenes/{len(train_subj)} pacientes, "
+        f"Val={len(df_val)}/{len(val_subj)}, Test={len(df_test)}/{len(test_subj)}."
+    )
     
     return train_loader, val_loader, test_loader, pesos_clase, mapeo_etiquetas
 

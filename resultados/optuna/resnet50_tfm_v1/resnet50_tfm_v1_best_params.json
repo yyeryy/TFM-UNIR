@@ -1,0 +1,33 @@
+{
+  "study_name": "resnet50_tfm_v1",
+  "objective": "maximize val_patient_roc_auc",
+  "best_trial": 18,
+  "best_value": 0.4770833333333333,
+  "params": {
+    "lr": 8.980455632612052e-06,
+    "weight_decay": 9.562617641191289e-05,
+    "dropout": 0.4,
+    "label_smoothing": 0.1,
+    "balance_strategy": "sampler",
+    "batch_size": 32,
+    "roi_frac": 0.6,
+    "scheduler_factor": 0.3
+  },
+  "validation_metrics": {
+    "best_epoch": 1.0,
+    "best_val_loss": 0.6948848667516035,
+    "best_val_patient_balanced_acc": 0.5058035714285714,
+    "best_val_patient_mcc": 0.009853915499489491,
+    "best_val_patient_roc_auc": 0.4770833333333333,
+    "best_val_patient_sensitivity": 0.5428571428571428,
+    "best_val_patient_specificity": 0.46875,
+    "duracion_min": 8.666361983617147
+  },
+  "checkpoint": "/Users/luisazcoitipena/Desktop/Repo TFM/TFM-UNIR/models/optuna/resnet50_tfm_v1/optuna_resnet50_tfm_v1_trial_018_best.pth",
+  "sqlite": "/Users/luisazcoitipena/Desktop/Repo TFM/TFM-UNIR/resultados/optuna/resnet50_tfm_v1/resnet50_tfm_v1.db",
+  "trials_csv": "/Users/luisazcoitipena/Desktop/Repo TFM/TFM-UNIR/resultados/optuna/resnet50_tfm_v1/resnet50_tfm_v1_trials.csv",
+  "plots": {
+    "optimization_history": "/Users/luisazcoitipena/Desktop/Repo TFM/TFM-UNIR/resultados/optuna/resnet50_tfm_v1/resnet50_tfm_v1_optimization_history.png",
+    "param_importances": "/Users/luisazcoitipena/Desktop/Repo TFM/TFM-UNIR/resultados/optuna/resnet50_tfm_v1/resnet50_tfm_v1_param_importances.png"
+  }
+}

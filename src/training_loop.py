@@ -54,6 +54,15 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--min-lr", type=float, default=1e-7)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--dropout", type=float, default=0.5)
+    parser.add_argument("--label-smoothing", type=float, default=0.1)
+    parser.add_argument(
+        "--balance-strategy",
+        type=str,
+        default="sampler",
+        choices=["class_weights", "sampler", "none"],
+        help="Balanceo por pesos en la loss, muestreo equilibrado o sin balanceo.",
+    )
 
     # Optimizador y Scheduler
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["adamw", "adam"])
@@ -65,8 +74,11 @@ def parse_args():
     parser.add_argument(
         "--monitor",
         type=str,
-        default="val_f1",
-        choices=["val_loss", "val_acc", "val_balanced_acc", "val_recall", "val_f1", "val_roc_auc"],
+        default="val_patient_balanced_acc",
+        choices=[
+            "val_loss", "val_acc", "val_balanced_acc", "val_recall", "val_f1", "val_roc_auc",
+            "val_patient_balanced_acc", "val_patient_f1", "val_patient_roc_auc",
+        ],
     )
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument("--min-delta", type=float, default=1e-4)
@@ -159,7 +171,7 @@ def get_next_version(output_dir, model_name):
     return max(versiones) + 1 if versiones else 1
 
 
-def build_model(model_name, num_classes, pretrained, freeze):
+def build_model(model_name, num_classes, pretrained, freeze, dropout=0.5):
     if model_name == "resnet18":
         weights = models.ResNet18_Weights.DEFAULT if pretrained else None
         model = models.resnet18(weights=weights)
@@ -183,7 +195,16 @@ def build_model(model_name, num_classes, pretrained, freeze):
     elif freeze == "head":
         pass
 
-    model.fc = nn.Linear(num_features, num_classes)
+    if not 0 <= dropout < 1:
+        raise ValueError("dropout debe estar en el intervalo [0, 1).")
+
+    if dropout > 0:
+        model.fc = nn.Sequential(
+            nn.Dropout(p=dropout),
+            nn.Linear(num_features, num_classes),
+        )
+    else:
+        model.fc = nn.Linear(num_features, num_classes)
     return model
 
 
@@ -264,10 +285,17 @@ def run_epoch(model, loader, criterion, optimizer, device, scaler=None):
     all_labels = []
     all_preds = []
     all_probs = []
+    all_subjects = []
     loss_sum = 0.0
     non_blocking = device.type == "cuda"
 
-    for images, labels in loader:
+    for batch in loader:
+        if len(batch) == 3:
+            images, labels, subjects = batch
+            all_subjects.extend(str(subject) for subject in subjects)
+        else:
+            images, labels = batch
+
         images = images.to(device, non_blocking=non_blocking)
         labels = labels.to(device, non_blocking=non_blocking)
 
@@ -300,7 +328,38 @@ def run_epoch(model, loader, criterion, optimizer, device, scaler=None):
         all_preds.extend(preds.detach().cpu().numpy())
         all_probs.extend(probs.detach().cpu().numpy())
 
-    return compute_metrics(all_labels, all_preds, all_probs, loss_sum)
+    metrics = compute_metrics(all_labels, all_preds, all_probs, loss_sum)
+
+    if all_subjects:
+        probs_array = np.asarray(all_probs)
+        patient_rows = pd.DataFrame({
+            "Subject": all_subjects,
+            "label": all_labels,
+        })
+        for class_idx in range(probs_array.shape[1]):
+            patient_rows[f"prob_{class_idx}"] = probs_array[:, class_idx]
+
+        probability_columns = [f"prob_{i}" for i in range(probs_array.shape[1])]
+        aggregation = {"label": "first", **{column: "mean" for column in probability_columns}}
+        patient_rows = patient_rows.groupby("Subject", as_index=False).agg(aggregation)
+
+        patient_labels = patient_rows["label"].to_numpy()
+        patient_probs = patient_rows[probability_columns].to_numpy()
+        patient_preds = np.argmax(patient_probs, axis=1)
+        patient_metrics = compute_metrics(
+            patient_labels,
+            patient_preds,
+            patient_probs,
+            loss_sum=0.0,
+        )
+
+        for key, value in patient_metrics.items():
+            if key == "loss":
+                continue
+            output_key = "patient_num_subjects" if key == "num_samples" else f"patient_{key}"
+            metrics[output_key] = value
+
+    return metrics
 
 
 class EarlyStopping:
@@ -397,6 +456,8 @@ def main():
         batch_size=args.batch_size,
         roi=args.roi,
         roi_frac=args.roi_frac,
+        balance_strategy=args.balance_strategy,
+        return_subject=True,
     )
 
     model = build_model(
@@ -404,15 +465,24 @@ def main():
         num_classes=args.num_classes,
         pretrained=not args.no_pretrained,
         freeze=args.freeze,
+        dropout=args.dropout,
     ).to(device)
 
     class_weights = class_weights.to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    if not 0 <= args.label_smoothing < 1:
+        raise ValueError("label_smoothing debe estar en el intervalo [0, 1).")
+    criterion = nn.CrossEntropyLoss(
+        weight=class_weights,
+        label_smoothing=args.label_smoothing,
+    )
     optimizer = get_optimizer(args, model)
 
     monitor_to_metric = {
         "val_loss": "loss", "val_acc": "acc", "val_balanced_acc": "balanced_acc",
         "val_recall": "recall", "val_f1": "f1", "val_roc_auc": "roc_auc",
+        "val_patient_balanced_acc": "patient_balanced_acc",
+        "val_patient_f1": "patient_f1",
+        "val_patient_roc_auc": "patient_roc_auc",
     }
     monitor_metric = monitor_to_metric[args.monitor]
     mode = "min" if args.monitor == "val_loss" else "max"
@@ -476,7 +546,9 @@ def main():
                 "Val/Acc": val_metrics["acc"],
                 "Val/Recall": val_metrics["recall"],
                 "Val/F1": val_metrics["f1"],
-                "Val/ROC-AUC": val_metrics.get("roc_auc", 0)
+                "Val/ROC-AUC": val_metrics.get("roc_auc", 0),
+                "Val/Patient-Balanced-Acc": val_metrics.get("patient_balanced_acc", 0),
+                "Val/Patient-ROC-AUC": val_metrics.get("patient_roc_auc", 0),
             })
 
         row = {
@@ -512,6 +584,8 @@ def main():
             f"Train Loss {train_metrics['loss']:.4f} | Val Loss {val_metrics['loss']:.4f} | "
             f"Val Acc {val_metrics['acc']:.4f} | Val Recall {val_metrics['recall']:.4f} | "
             f"Val F1 {val_metrics['f1']:.4f} | "
+            f"Patient BalAcc {val_metrics.get('patient_balanced_acc', float('nan')):.4f} | "
+            f"Patient AUC {val_metrics.get('patient_roc_auc', float('nan')):.4f} | "
             f"{'BEST' if improved else f'wait {early_stopping.bad_epochs}/{args.patience}'} | "
             f"{time.time() - epoch_start:.1f}s"
         )
@@ -533,6 +607,13 @@ def main():
         print("\n[TEST]")
         print(f"Loss {test_metrics['loss']:.4f} | Acc {test_metrics['acc']:.4f} | "
               f"Recall {test_metrics['recall']:.4f} | F1 {test_metrics['f1']:.4f} | ROC-AUC {test_metrics['roc_auc']}")
+        print(
+            f"Paciente | BalAcc {test_metrics.get('patient_balanced_acc', float('nan')):.4f} | "
+            f"AUC {test_metrics.get('patient_roc_auc', float('nan')):.4f} | "
+            f"Especificidad {test_metrics.get('patient_specificity', float('nan')):.4f} | "
+            f"Sensibilidad {test_metrics.get('patient_sensitivity', float('nan')):.4f} | "
+            f"MCC {test_metrics.get('patient_mcc', float('nan')):.4f}"
+        )
         
         if args.wandb:
             wandb.log({f"Test/{k}": v for k, v in test_metrics.items() if isinstance(v, (int, float))})
@@ -543,13 +624,14 @@ def main():
     best_history_row = next((r for r in history if r["epoch"] == best_epoch), None)
 
     summary_row = {
+        **vars(args),
         "run_name": run_name, "fecha_inicio": run_started_at, "fecha_fin": run_finished_at,
         "duracion_min": elapsed_minutes, "model": args.model, "device": str(device),
         "checkpoint_path": str(checkpoint_path), "excel_path": str(excel_path),
         "best_epoch": best_epoch, "best_monitor": args.monitor,
         "best_monitor_value": best_monitor_value, "class_map": json.dumps(class_map),
         "train_batches": len(train_loader), "val_batches": len(val_loader), "test_batches": len(test_loader),
-        "trainable_params": trainable_params, "total_params": total_params, **vars(args),
+        "trainable_params": trainable_params, "total_params": total_params,
     }
 
     if best_history_row:

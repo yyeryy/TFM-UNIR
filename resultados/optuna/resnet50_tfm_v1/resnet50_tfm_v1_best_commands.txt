@@ -1,0 +1,5 @@
+MAC
+caffeinate python src/main.py --model resnet50 --csv data_index.csv --images data/PPMI_Procesado_2D_Atlas --epochs 60 --patience 8 --monitor val_patient_roc_auc --freeze layer4 --optimizer adamw --scheduler plateau --scheduler-patience 3 --scheduler-factor 0.3 --lr 8.980455632612052e-06 --weight-decay 9.562617641191289e-05 --dropout 0.4 --label-smoothing 0.1 --balance-strategy sampler --batch-size 32 --roi-frac 0.6 --seed 42 --run-name resnet50_optuna_resnet50_tfm_v1_final --eval-test --wandb
+
+WINDOWS
+python src/main.py --model resnet50 --csv data_index.csv --images data/PPMI_Procesado_2D_Atlas --epochs 60 --patience 8 --monitor val_patient_roc_auc --freeze layer4 --optimizer adamw --scheduler plateau --scheduler-patience 3 --scheduler-factor 0.3 --lr 8.980455632612052e-06 --weight-decay 9.562617641191289e-05 --dropout 0.4 --label-smoothing 0.1 --balance-strategy sampler --batch-size 32 --roi-frac 0.6 --seed 42 --run-name resnet50_optuna_resnet50_tfm_v1_final --eval-test --wandb

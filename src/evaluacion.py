@@ -51,6 +51,7 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
     # Reaplicar el mismo ROI de entrada usado en entrenamiento (coherencia train/eval)
     roi = args_train.get("roi", True)
     roi_frac = normalizar_roi_frac(args_train.get("roi_frac", 0.6))
+    balance_strategy = args_train.get("balance_strategy", "class_weights")
 
     # 1. Cargar Dataloader de Test
     _, _, test_loader, class_weights, _ = preparar_dataloaders(
@@ -60,6 +61,8 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
         batch_size=batch_size,
         roi=roi,
         roi_frac=roi_frac,
+        balance_strategy=balance_strategy,
+        return_subject=True,
     )
     
     # 2. Reconstruir la arquitectura
@@ -71,16 +74,26 @@ def evaluar_modelo_test(checkpoint_path, csv_path="data_index.csv", images_dir="
         raise ValueError(f"Modelo no soportado: {model_name}")
         
     num_features = model.fc.in_features
-    model.fc = nn.Linear(num_features, len(clases_permitidas))
+    state_dict = checkpoint["model_state_dict"]
+    if "fc.1.weight" in state_dict:
+        model.fc = nn.Sequential(
+            nn.Dropout(p=args_train.get("dropout", 0.5)),
+            nn.Linear(num_features, len(clases_permitidas)),
+        )
+    else:
+        model.fc = nn.Linear(num_features, len(clases_permitidas))
     
     # Cargar los pesos entrenados y poner en modo evaluación
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model.load_state_dict(state_dict)
     model = model.to(device)
     model.eval()
     
     # 3. Configurar criterio de pérdida
     class_weights = class_weights.to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    criterion = nn.CrossEntropyLoss(
+        weight=class_weights,
+        label_smoothing=args_train.get("label_smoothing", 0.0),
+    )
     
     # 4. Ejecutar evaluación en Test
     print(f"[EVALUACIÓN] Procesando lote de Test independiente...")

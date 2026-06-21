@@ -62,10 +62,21 @@ def reconstruir_modelo(checkpoint, device):
         raise ValueError(f"Modelo {model_name} no soportado en este script.")
 
     num_features = model.fc.in_features
-    model.fc = nn.Linear(num_features, num_classes)
-    
-    model.load_state_dict(checkpoint["model_state_dict"])
+    state_dict = checkpoint["model_state_dict"]
+    if "fc.1.weight" in state_dict:
+        model.fc = nn.Sequential(
+            nn.Dropout(p=args_entrenamiento.get("dropout", 0.5)),
+            nn.Linear(num_features, num_classes),
+        )
+    else:
+        model.fc = nn.Linear(num_features, num_classes)
+
+    model.load_state_dict(state_dict)
     model = model.to(device)
+    # Grad-CAM necesita gradientes en el backbone aunque durante el entrenamiento
+    # se haya congelado y solo se haya optimizado la cabeza clasificadora.
+    for parameter in model.parameters():
+        parameter.requires_grad_(True)
     model.eval()
     
     return model, clases_map, args_entrenamiento

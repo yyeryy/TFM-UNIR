@@ -59,6 +59,12 @@ def main():
     
     print("\n[OK] Fase de evaluacion estatica completada con exito.")
     print(f"     -> Acc Global: {test_metrics['acc']:.4f} | Recall (Sensibilidad): {test_metrics['recall']:.4f} | F1-Score: {test_metrics['f1']:.4f}")
+    print(
+        f"     -> Paciente: BalAcc {test_metrics.get('patient_balanced_acc', float('nan')):.4f} | "
+        f"AUC {test_metrics.get('patient_roc_auc', float('nan')):.4f} | "
+        f"Especificidad {test_metrics.get('patient_specificity', float('nan')):.4f} | "
+        f"Sensibilidad {test_metrics.get('patient_sensitivity', float('nan')):.4f}"
+    )
 
     # FASE 3: EXPLICABILIDAD (XAI - GRAD-CAM)
     print("\n--- FASE 3: APERTURA DE CAJA NEGRA (XAI) ---")
