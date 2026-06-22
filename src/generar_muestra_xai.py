@@ -1,19 +1,3 @@
-"""
-Generador de la muestra de validación clínica (XAI).
-
-Script POST-ENTRENAMIENTO e INDEPENDIENTE del pipeline de entrenamiento.
-Genera una muestra de 150 imágenes Grad-CAM (75 Parkinson + 75 Control)
-seleccionadas aleatoriamente con SEMILLA FIJA = 42, exclusivamente del
-conjunto de TEST (mismo split que el entrenamiento, random_state=42).
-
-Cada imagen se guarda como un PNG independiente con dos paneles:
-  - Izquierda: MRI original (escala de grises).
-  - Derecha : mapa Grad-CAM superpuesto, con etiqueta real y predicción.
-
-Salida: XAI/muestra-validacion-clinica/
-        + un índice 'indice_muestra.csv' con los metadatos de los 150 cortes.
-"""
-
 import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
@@ -25,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use("Agg")  # backend sin ventana, apto para ejecución en servidor
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import torch
@@ -35,11 +19,9 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
-# --- Rutas del proyecto ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Reutilizamos la lógica YA EXISTENTE del proyecto (no se duplica ni se modifica)
 from src.dataset import ParkinsonDataset
 from src.explicabilidad import reconstruir_modelo, desnormalizar_imagen, get_device
 
@@ -64,7 +46,6 @@ def parse_args():
 
 
 def fijar_semillas(semilla=SEMILLA):
-    """Fija todas las fuentes de aleatoriedad para garantizar reproducibilidad."""
     random.seed(semilla)
     np.random.seed(semilla)
     torch.manual_seed(semilla)
@@ -73,11 +54,6 @@ def fijar_semillas(semilla=SEMILLA):
 
 
 def obtener_df_test(ruta_csv, ruta_imagenes, clases_permitidas):
-    """
-    Reconstruye el DataFrame del conjunto de TEST replicando EXACTAMENTE la
-    misma división por paciente que usa src/dataset.py (random_state=42).
-    Devuelve un DataFrame con columnas: Archivo, Subject, Etiqueta.
-    """
     ruta_imagenes = Path(ruta_imagenes)
 
     df_clinico = pd.read_csv(ruta_csv)
@@ -100,7 +76,6 @@ def obtener_df_test(ruta_csv, ruta_imagenes, clases_permitidas):
 
     sujetos_unicos = df_master[['Subject', 'Etiqueta']].drop_duplicates()
 
-    # MISMA división que el entrenamiento -> mismo Test (sin fuga de datos)
     train_subj, resto_subj = train_test_split(
         sujetos_unicos, test_size=0.30,
         stratify=sujetos_unicos['Etiqueta'], random_state=42
@@ -115,10 +90,6 @@ def obtener_df_test(ruta_csv, ruta_imagenes, clases_permitidas):
 
 
 def muestrear_balanceado(df_test, total, mapeo_etiquetas):
-    """
-    Selecciona aleatoriamente (semilla 42) total/2 cortes por clase.
-    Devuelve un DataFrame mezclado y reindexado.
-    """
     por_clase = total // 2
     seleccion = []
     for clase, etiqueta in mapeo_etiquetas.items():
@@ -131,7 +102,6 @@ def muestrear_balanceado(df_test, total, mapeo_etiquetas):
         seleccion.append(disponibles.sample(n=por_clase, random_state=SEMILLA))
 
     df_muestra = pd.concat(seleccion, ignore_index=True)
-    # Mezclamos para que no queden todas las PD seguidas de las Control
     df_muestra = df_muestra.sample(frac=1, random_state=SEMILLA).reset_index(drop=True)
     return df_muestra
 
@@ -144,7 +114,6 @@ def main():
     print(f"[INFO] Dispositivo: {device}")
     print(f"[INFO] Semilla fija: {SEMILLA}")
 
-    # 1) Cargar modelo entrenado
     ruta_pth = Path(args.checkpoint)
     if not ruta_pth.exists():
         raise FileNotFoundError(f"No se encontró el checkpoint: {ruta_pth}")
@@ -153,7 +122,6 @@ def main():
     idx_to_class = {v: k for k, v in class_map.items()}
     clases_permitidas = list(class_map.keys())
 
-    # 2) Reconstruir el conjunto de Test y muestrear 75 + 75
     ruta_csv = PROJECT_ROOT / args.csv
     ruta_imagenes = PROJECT_ROOT / args.images
     df_test, mapeo_etiquetas = obtener_df_test(ruta_csv, ruta_imagenes, clases_permitidas)
@@ -164,10 +132,8 @@ def main():
     print(f"[INFO] Muestra seleccionada: {len(df_muestra)} cortes "
           f"({df_muestra['Etiqueta'].value_counts().to_dict()})")
 
-    # Dataset con las MISMAS transformaciones que en entrenamiento/inferencia
     dataset = ParkinsonDataset(df_muestra, ruta_imagenes)
 
-    # 3) Preparar Grad-CAM y carpeta de salida
     target_layers = [modelo.layer4[-1]]
     cam = GradCAM(model=modelo, target_layers=target_layers)
 
@@ -182,7 +148,6 @@ def main():
         tensor_img = tensor_img.unsqueeze(0).to(device)
         etiqueta_real = int(etiqueta_t.item())
 
-        # Predicción del modelo
         with torch.no_grad():
             salida = modelo(tensor_img)
             prediccion = int(torch.argmax(salida, dim=1).item())
@@ -190,17 +155,14 @@ def main():
         nombre_real = idx_to_class[etiqueta_real]
         nombre_pred = idx_to_class[prediccion]
 
-        # Grad-CAM hacia la clase predicha
         target = [ClassifierOutputTarget(prediccion)]
         grayscale_cam = cam(input_tensor=tensor_img, targets=target)[0, :]
 
-        # Imagen original desnormalizada (para visualizar)
         img_desnorm = desnormalizar_imagen(tensor_img[0])
         img_visual = img_desnorm.numpy().transpose(1, 2, 0)
         img_visual = np.clip(img_visual, 0, 1)
         visualizacion = show_cam_on_image(img_visual, grayscale_cam, use_rgb=True)
 
-        # Figura: original + Grad-CAM
         fig, axes = plt.subplots(1, 2, figsize=(8, 4))
         axes[0].imshow(img_visual[:, :, 0], cmap='gray')
         axes[0].set_title(f"Real: {nombre_real}", fontsize=11, fontweight='bold')
@@ -236,7 +198,6 @@ def main():
         if (i + 1) % 25 == 0:
             print(f"      ... {i + 1}/{len(df_muestra)} imágenes generadas")
 
-    # 4) Guardar índice de la muestra
     df_indice = pd.DataFrame(registros)
     ruta_indice = output_dir / "indice_muestra.csv"
     df_indice.to_csv(ruta_indice, index=False, encoding="utf-8-sig")
