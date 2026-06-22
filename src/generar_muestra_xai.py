@@ -36,7 +36,7 @@ def parse_args():
                         help="Ruta al .pth del modelo entrenado (obligatorio).")
     parser.add_argument("--csv", type=str, default="data_index.csv",
                         help="CSV maestro con los metadatos clínicos.")
-    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D",
+    parser.add_argument("--images", type=str, default="data/PPMI_Procesado_2D_Atlas",
                         help="Carpeta con los cortes 2D .npy.")
     parser.add_argument("--output-dir", type=str, default="XAI/muestra-validacion-clinica",
                         help="Carpeta de salida de las imágenes.")
