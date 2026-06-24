@@ -2,7 +2,6 @@ import sys
 import os
 from pathlib import Path
 
-# Activar el fallback para Mac: Si MPS no soporta una operacion, que use la CPU sin romper el script
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 ruta_raiz = Path(__file__).resolve().parent.parent
@@ -133,10 +132,8 @@ def test_rapido(modelo, nombre, train_loader, val_loader, pesos_clase, device, n
     return df_resultados, tiempo_total
 
 def generar_graficos(df_r18, df_r50, dir_raiz):
-    """Genera un panel de 2x2 y lo guarda en la carpeta /graficas"""
     print("\n[INFO] Generando gráficos comparativos avanzados...")
     
-    # 1. Crear carpeta graficas/ si no existe
     dir_graficas = Path(dir_raiz) / 'graficas'
     dir_graficas.mkdir(parents=True, exist_ok=True)
     ruta_guardado = dir_graficas / 'comparativa_avanzada_modelos.png'
